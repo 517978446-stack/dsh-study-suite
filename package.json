@@ -1,0 +1,42 @@
+{
+  "name": "dsh-study-suite",
+  "version": "3.7.0",
+  "private": false,
+  "type": "module",
+  "description": "One panel for course links, course activity, tasks, flashcards, offline translation, voice notes and speaker-labelled minutes.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "license": "MIT",
+  "author": "your name",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "translation",
+    "study",
+    "ai-detection"
+  ]
+}
