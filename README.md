@@ -32,7 +32,7 @@ npm i dsh-study-suite@3.7.0   # 若已发布到 npm
 
 ### 2. 本地服务（必需）
 
-面板本身不含模型和推理代码。到本仓库的 **Releases** 下载 `study-suite-3.7.0-*.zip`，
+面板本身不含模型和推理代码。**本地服务包（`study-suite-3.7.0-*.zip`）请直接向作者索取**，
 解压后按里面的 README 跑安装脚本：
 
 - macOS：`./install.sh`（最小约 200MB）
