@@ -2889,7 +2889,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(json.load(open(TIMETABLE_FILE, encoding="utf-8")))
             except FileNotFoundError:
                 # 200 + 空列表：没配课表和路由不存在要区分开，否则面板会当成接口挂了
-                self._json({"classes": [], "error": "还没有课表（可在面板里手动添加，或等安装脚本写入）"})
+                self._json({"classes": [], "error": "还没有课表：在面板里传一张课表截图识别，或者手动添加"})
             except Exception as err:
                 self._json({"classes": [], "error": str(err)}, 500)
             return

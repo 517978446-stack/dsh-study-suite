@@ -1384,7 +1384,7 @@ window.__ModuleLoader__.load({
             },
           }, "copy(localStorage.getItem('cn_token'))"));
           body.push(h('p', { key: 's3', style: { margin: 0, fontSize: 13, lineHeight: 1.7 } },
-            '3. 粘贴到下面，保存后课程 / 课表 / 作业会自动读取'));
+            '3. 粘贴到下面，保存后课程和作业会自动读取（课表不抓取，用截图或手动添加）'));
           body.push(h('input', {
             key: 'token',
             value: cnTokenInput,
@@ -1601,7 +1601,7 @@ window.__ModuleLoader__.load({
                 },
                 title: cnLoggedAt
                   ? '已登录 CN。点这里可以重新导入 token（失效时用）'
-                  : '导入 CN 登录：课程、课表、作业会自动读取',
+                  : '导入 CN 登录：课程和作业会自动读取',
                 style: Object.assign(pillStyle(false), {
                   height: 28,
                   cursor: 'pointer',
