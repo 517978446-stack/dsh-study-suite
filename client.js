@@ -1840,6 +1840,7 @@ window.__ModuleLoader__.load({
       const [tab, setTab] = React.useState('doc');
       const [to, setTo] = React.useState('zh');
       const [engine, setEngine] = React.useState('llm');
+      const [caps, setCaps] = React.useState({ llm: true, asr: true, imageOcr: true, pdfOcr: true, known: false });
       const [docText, setDocText] = React.useState('');
       const [docResult, setDocResult] = React.useState('');
       const [docPairs, setDocPairs] = React.useState([]);
@@ -1887,6 +1888,18 @@ window.__ModuleLoader__.load({
               setTermCount((data && data.glossary && data.glossary.en_zh) || 0);
               const loaded = (data && data.idleUnload && data.idleUnload.loaded) || {};
               setMem({ llm: !!loaded.llm, asr: !!loaded.asr });
+              const capability = (data && data.capabilities) || {};
+              const next = {
+                llm: capability.llm !== false,
+                asr: capability.asr !== false,
+                imageOcr: capability.imageOcr !== false,
+                pdfOcr: capability.pdfOcr !== false,
+                known: true,
+              };
+              setCaps(next);
+              if (!next.llm) {
+                setEngine(function (current) { return current === 'llm' ? 'fast' : current; });
+              }
             })
             .catch(() => alive && setStatus('offline'))
             .finally(() => clearTimeout(timer));
@@ -2149,11 +2162,17 @@ window.__ModuleLoader__.load({
           'button',
           {
             type: 'button',
-            onClick: () => setEngine('llm'),
-            title: 'Qwen2.5-7B 本地大模型，2–5 秒，语境与格式更好',
-            style: pillStyle(engine === 'llm'),
+            onClick: () => { if (caps.llm) setEngine('llm'); },
+            disabled: !caps.llm,
+            title: caps.llm
+              ? 'Qwen2.5-7B 本地大模型，2–5 秒，语境与格式更好'
+              : '仅 macOS（Apple 芯片）可用：7B 依赖 MLX 推理框架，Windows/Linux 请用「快速」',
+            style: Object.assign(pillStyle(engine === 'llm'), {
+              opacity: caps.llm ? 1 : 0.45,
+              cursor: caps.llm ? 'pointer' : 'not-allowed',
+            }),
           },
-          '精准 7B',
+          caps.llm ? '精准 7B' : '精准 7B（仅 macOS）',
         ),
       );
 
@@ -2386,14 +2405,21 @@ window.__ModuleLoader__.load({
           { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
           h(
             Button,
-            { onClick: recordShot, primary: true, disabled: mic !== 'idle' },
+            { onClick: recordShot, primary: true, disabled: mic !== 'idle' || !caps.asr },
             mic === 'shot' ? '录音中（8 秒）…' : '录一段（8 秒）',
           ),
           h(
             Button,
-            { onClick: mic === 'live' ? stopLive : startLive, disabled: mic === 'shot' },
+            { onClick: mic === 'live' ? stopLive : startLive, disabled: mic === 'shot' || !caps.asr },
             mic === 'live' ? '停止听写' : '连续听写',
           ),
+          !caps.asr
+            ? h(
+                'span',
+                { style: { fontSize: 12, color: 'var(--dsw-alias-state-warn-primary)' } },
+                '未安装语音组件：Windows 请用 -Full 重装，或到 macOS 使用',
+              )
+            : null,
           mic === 'live'
             ? h('span', { style: { fontSize: 12, color: C.muted } }, '每 6 秒出一段字幕')
             : null,
@@ -2755,6 +2781,20 @@ window.__ModuleLoader__.load({
       }
 
       function DetectPanel() {
+        const [ocr, setOcr] = React.useState({ image: true, pdf: true, known: false });
+        React.useEffect(function () {
+          let alive = true;
+          fetch(ENGINE + '/health', { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (!alive) return;
+              const c = (data && data.capabilities) || {};
+              setOcr({ image: c.imageOcr !== false, pdf: c.pdfOcr !== false, known: true });
+            })
+            .catch(function () { /* 离线时保持乐观 */ });
+          return function () { alive = false; };
+        }, []);
+
         const scheme = useAppColorScheme();
         const [text, setText] = React.useState('');
         const [filename, setFilename] = React.useState('');
@@ -2869,7 +2909,7 @@ window.__ModuleLoader__.load({
                 h('input', {
                   ref: fileRef,
                   type: 'file',
-                  accept: '.txt,.md,.docx,.pdf,image/*',
+                  accept: ocr.image ? '.txt,.md,.docx,.pdf,image/*' : '.txt,.md,.docx,.pdf',
                   onChange: function (event) {
                     const file = event.target.files && event.target.files[0];
                     setPickedFile(file ? file.name : '');
@@ -3108,7 +3148,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.1.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.6.0'),
         ),
         h(
           'div',
