@@ -1022,6 +1022,37 @@ window.__ModuleLoader__.load({
                           ? h(
                               'div',
                               { style: { display: 'flex', gap: 6, paddingTop: 2, flexWrap: 'wrap' } },
+                              (function () {
+                                const list = item.docs && item.docs.length
+                                  ? item.docs
+                                  : (item.doc ? [{ lang: 'en', path: item.doc }] : []);
+                                const enDoc = list.find(function (d) { return d.lang === 'en'; });
+                                const zhDoc = list.find(function (d) { return d.lang === 'zh'; });
+                                if (!enDoc || !zhDoc) return null;
+                                return h(
+                                  'a',
+                                  {
+                                    href: ENGINE + '/reading?path=' + encodeURIComponent(enDoc.path),
+                                    target: '_blank',
+                                    rel: 'noreferrer',
+                                    title: '完整原文 + 每段下方中文翻译',
+                                    style: {
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      height: 22,
+                                      padding: '0 9px',
+                                      borderRadius: 11,
+                                      border: '1px solid ' + C.accent,
+                                      background: C.accent,
+                                      color: readableOn(C.accent),
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      textDecoration: 'none',
+                                    },
+                                  },
+                                  '中英对照',
+                                );
+                              })(),
                               (item.docs && item.docs.length
                                 ? item.docs
                                 : (item.doc ? [{ lang: 'en', path: item.doc }] : [])
@@ -2815,7 +2846,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.0.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.1.0'),
         ),
         h(
           'div',
