@@ -39,6 +39,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 import wave
 
 import ctranslate2
@@ -84,6 +85,8 @@ ASR_DRAFT_MODEL = os.environ.get("CN_ASR_DRAFT_MODEL", "base.en")
 # 否则同一份文档会在一个页面能查、另一个页面不能查
 MIN_CHECK_CHARS = 40
 LLM_DIR = os.path.join(MODELS_DIR, "qwen25-7b-4bit")
+LLM_HTTP_BASE = os.environ.get("CN_LLM_BASE", "http://127.0.0.1:11434").rstrip("/")
+LLM_HTTP_MODEL = os.environ.get("CN_LLM_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 DIAR_DIR = os.path.join(MODELS_DIR, "diar")
 
 DIGEST_FILE = os.path.join(SECRETS_DIR, "cn-digest.json")
@@ -93,10 +96,75 @@ PLAN_FILE = os.path.join(HERE, "plan.json")
 TIMETABLE_FILE = os.path.join(HERE, "timetable.json")
 FILTER_FILE = os.path.join(HERE, "course-filters.json")
 HIDDEN_FILE = os.path.join(HERE, "hidden-courses.json")
-OCR_BIN = os.path.join(HERE, "audio", "ocr.exe" if os.name == "nt" else "ocr")
-PDF_OCR_BIN = os.path.join(HERE, "audio", "pdfocr.exe" if os.name == "nt" else "pdfocr")
+def _ocr_binary(name):
+    """优先用编译好的可执行文件；没有就退回同名 .py（Windows 上用 RapidOCR 桥接）。"""
+    exe = os.path.join(HERE, "audio", name + (".exe" if os.name == "nt" else ""))
+    if os.path.exists(exe):
+        return exe
+    py = os.path.join(HERE, "audio", name + ".py")
+    if os.path.exists(py):
+        return py
+    return exe
+
+
+OCR_BIN = _ocr_binary("ocr")
+PDF_OCR_BIN = _ocr_binary("pdfocr")
 PLATFORM = "windows" if os.name == "nt" else ("macos" if sys.platform == "darwin" else "linux")
-PDF_OCR_BIN = os.path.join(HERE, "audio", "pdfocr")
+
+
+_OCR_LOCK = threading.Lock()
+_OCR_ENGINE = None
+
+
+def _ocr_engine():
+    """进程内复用 RapidOCR 引擎：每次新建都重新加载 ONNX 模型，实测慢 3 秒。"""
+    global _OCR_ENGINE
+    with _OCR_LOCK:
+        if _OCR_ENGINE is None:
+            from rapidocr_onnxruntime import RapidOCR
+
+            _OCR_ENGINE = RapidOCR()
+        return _OCR_ENGINE
+
+
+def _ocr_lines(result):
+    lines = []
+    for item in result or []:
+        text = (item[1] or "").strip()
+        if text:
+            lines.append(text)
+    return lines
+
+
+def ocr_image(path):
+    """进程内识别图片；引擎不可用时抛异常，让调用方回退到子进程。"""
+    result, _elapse = _ocr_engine()(path)
+    return "\n".join(_ocr_lines(result))
+
+
+def ocr_pdf(path, dpi=240):
+    """进程内识别扫描版 PDF：PyMuPDF 渲染 + 同一套 OCR 引擎。"""
+    import fitz
+
+    engine = _ocr_engine()
+    pages = []
+    with fitz.open(path) as doc:
+        for index, page in enumerate(doc):
+            if index >= 60:
+                break
+            png = page.get_pixmap(dpi=dpi).tobytes("png")
+            result, _elapse = engine(png)
+            lines = _ocr_lines(result)
+            if lines:
+                pages.append("\n".join(lines))
+    return "\n\n".join(pages)
+
+
+def _ocr_argv(binary, *args):
+    """把 [binary, *args] 变成可直接交给 subprocess 的列表（.py 需要先用解释器跑）。"""
+    if binary.endswith(".py"):
+        return [sys.executable, binary] + list(args)
+    return [binary] + list(args)
 IDLE_SECONDS = int(os.environ.get("CN_IDLE_SECONDS", "300"))  # 5 分钟无请求即卸载
 IDLE = {
     # name: seconds of inactivity before the weights are released
@@ -183,9 +251,60 @@ def build_system_prompt(to, text="", use_glossary=True):
     return "\n".join(rules)
 
 
+_LLM_PROBE = {"at": 0.0, "ok": False, "ttl": 10.0}
+
+
+def _http_llm_ready():
+    """本地推理服务是否在线。结果缓存 10 秒：/health 会被面板频繁调用，
+    每次都去连一遍 Ollama 的话，Ollama 重启窗口里 /health 会卡 2 秒。"""
+    now = time.time()
+    ttl = _LLM_PROBE.get("ttl", 10.0)
+    if ttl > 0 and now - _LLM_PROBE["at"] < ttl:
+        return _LLM_PROBE["ok"]
+    try:
+        with urllib.request.urlopen(LLM_HTTP_BASE + "/api/tags", timeout=0.4) as resp:
+            ok = 200 <= resp.status < 300
+    except Exception:
+        ok = False
+    _LLM_PROBE.update(at=now, ok=ok, ttl=10.0 if ok else 30.0)
+    return ok
+
+
+def _http_chat(system, text, budget):
+    payload = {
+        "model": LLM_HTTP_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": text},
+        ],
+        "stream": False,
+        "options": {"temperature": 0.2, "num_predict": budget},
+    }
+    req = urllib.request.Request(
+        LLM_HTTP_BASE + "/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"content-type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as err:
+        raise BadRequest("本地推理服务没有响应（%s）：%s" % (LLM_HTTP_BASE, err))
+    return ((data.get("message") or {}).get("content") or "").strip()
+
+
 def llm_engine():
-    """Load the MLX chat model on first use and keep it warm until idle."""
+    """优先用本地 HTTP 推理服务；没有就退回 macOS 的 MLX。"""
+    if _LLM.get("mode") == "http" and _LLM.get("model"):
+        _LLM["last"] = time.time()
+        _LAST_USED["llm"] = time.time()
+        return _LLM
     if _LLM["model"] is None:
+        if _http_llm_ready():
+            _LLM.update(model="http:" + LLM_HTTP_MODEL, mode="http", tokenizer=None)
+            _LLM["last"] = time.time()
+            _LAST_USED["llm"] = time.time()
+            return _LLM
         if PLATFORM != "macos":
             raise BadRequest(
                 "精准翻译（7B）目前在 macOS 上用 MLX 运行；这台机器是 %s，请改用「快速」引擎。" % PLATFORM
@@ -210,19 +329,22 @@ MLX_UNAVAILABLE = "精准翻译（7B）仅 macOS（Apple 芯片）支持，请�
 
 
 def llm_translate(text, to, beam_unused=None, use_glossary=True):
+    state = llm_engine()
+    system = build_system_prompt(to, text, use_glossary)
+    budget = max(64, min(1024, int(len(text) * 2) + 64))
+    if state.get("mode") == "http":
+        output = _http_chat(system, text, budget)
+        _LLM["last"] = time.time()
+        return output
     try:
         from mlx_lm import generate
     except Exception as err:
         raise BadRequest("%s（%s）" % (MLX_UNAVAILABLE, err))
-
-    state = llm_engine()
-    system = build_system_prompt(to, text, use_glossary)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": text},
     ]
     prompt = state["tokenizer"].apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    budget = max(64, min(1024, int(len(text) * 2) + 64))
     output = generate(state["model"], state["tokenizer"], prompt=prompt, max_tokens=budget, verbose=False)
     _LLM["last"] = time.time()
     return output.strip()
@@ -329,6 +451,7 @@ def sweep_idle(now=None):
             if _LLM["model"] is not None and idle("llm"):
                 _LLM["model"] = None
                 _LLM["tokenizer"] = None
+                _LLM["mode"] = None
                 try:
                     import mlx.core as mx
 
@@ -887,7 +1010,13 @@ def extract_text(filename, data):
             handle.write(data)
             path = handle.name
         try:
-            out = subprocess.run([PDF_OCR_BIN, path, "6"], capture_output=True, text=True, timeout=180)
+            try:
+                text = ocr_pdf(path)
+                if text.strip():
+                    return text
+            except Exception as err:
+                sys.stderr.write("[interpreter] 进程内 PDF OCR 失败，回退子进程: %s\n" % err)
+            out = subprocess.run(_ocr_argv(PDF_OCR_BIN, path, "6", capture_output=True, text=True, timeout=180))
             ocr_text = out.stdout or ""
             if len(ocr_text.strip()) >= 40:
                 return ocr_text
@@ -910,7 +1039,13 @@ def extract_text(filename, data):
             handle.write(data)
             path = handle.name
         try:
-            out = subprocess.run([OCR_BIN, path], capture_output=True, text=True, timeout=60)
+            try:
+                return ocr_image(path)
+            except BadRequest:
+                raise
+            except Exception as err:
+                sys.stderr.write("[interpreter] 进程内 OCR 失败，回退子进程: %s\n" % err)
+            out = subprocess.run(_ocr_argv(OCR_BIN, path, capture_output=True, text=True, timeout=60))
             if out.returncode != 0:
                 raise ValueError("图片识别失败: %s" % (out.stdout or out.stderr)[:80])
             return out.stdout
@@ -2294,7 +2429,7 @@ class Handler(BaseHTTPRequestHandler):
                     "capabilities": {
                         "imageOcr": os.path.exists(OCR_BIN),
                         "pdfOcr": os.path.exists(PDF_OCR_BIN),
-                        "llm": os.path.isdir(LLM_DIR),
+                        "llm": os.path.isdir(LLM_DIR) or _http_llm_ready(),
                         "mtThreads": mt_threads(),
                         # 能不能用只看依赖装没装；模型目录是首次调用时才创建的，
                         # 拿它判断能力会让“刚装完 -Full 还没说过话”的用户永久锁死
