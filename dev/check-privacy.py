@@ -5,10 +5,13 @@ The package is shared with classmates, but the local machine holds real course
 lists, deadline dates, a CN token and absolute home paths. This script scans the
 built zips (or a source tree) and exits 1 when any of that leaks through.
 
-Two layers:
-  * generic patterns that are always wrong in a shipped file
+Two layers, but CI only runs the first one:
+  * generic patterns that are always wrong in a shipped file  <- CI covers this
   * local facts read from ~/.secrets and plan.json / timetable.json, so a course
-    code is caught only because it is really *your* course
+    code is caught only because it is really *your* course  <- local runs only
+
+`--generic-only` disables the second layer, which is what CI uses (the runner has
+no access to your machine, so course codes cannot be known there).
 
 A line containing ``privacy:ignore`` is skipped, so documentation can quote
 examples without failing the build.
@@ -29,11 +32,18 @@ import sys
 import zipfile
 
 GENERIC = [
-    (r"/Users/[A-Za-z0-9._-]+", "macOS 绝对路径"),
-    (r"[A-Za-z]:\\\\Users\\\\[^\\\\\s\"']+", "Windows 绝对路径"),
-    (r"学习区", "个人工作区目录名"),
-    (r"[\w.+-]+@(?:ucsiuniversity|gmail|qq|163|outlook)\.\w+", "个人邮箱"),
-    (r"\b\d{10}\b", "学号样式的十位数字"),
+    {"pattern": r"/Users/[A-Za-z0-9._-]+", "label": "macOS 绝对路径"},
+    # 单个反斜杠也要抓：raw string 里 \\\\ 只匹配两个反斜杠，实测会漏掉
+    # C:\Users\alice\x.txt 这种最常见的写法
+    {"pattern": r"[A-Za-z]:[\\/]{1,4}Users[\\/]{1,4}[^\\/\s\"']{2,}", "label": "Windows 绝对路径"},
+    {"pattern": r"学习区", "label": "个人工作区目录名"},
+    {"pattern": r"[\w.+-]+@(?:ucsiuniversity|gmail|qq|163|outlook)\.\w+", "label": "个人邮箱"},
+    # 十位数字单独出现多半是 Unix 时间戳，只在有学号语境时才算
+    {
+        "pattern": r"(?<!\d)\d{10}(?!\d)",
+        "label": "学号",
+        "require": r"学号|student[\s_-]*id|\bsid\b|matric",
+    },
 ]
 
 SELF = pathlib.Path(__file__).resolve()
@@ -59,7 +69,7 @@ def local_facts():
         for origin in state.get("origins") or []:
             for item in origin.get("localStorage") or []:
                 if item.get("name") == "cn_token" and item.get("value"):
-                    facts.append((re.escape(item["value"].strip('"')), "CN token 原值"))
+                    facts.append({"pattern": re.escape(item["value"].strip('"')), "label": "CN token 原值"})
     for name in ("plan.json", "timetable.json", "course-filters.json", "hidden-courses.json"):
         for base in (home / "学习区" / ".tools", home / ".dsh-study-suite"):
             path = base / name
@@ -70,30 +80,43 @@ def local_facts():
             except Exception:
                 continue
             for code in set(re.findall(r"\b[A-Z]{2,4}\d{3,4}\b", text)):
-                facts.append((re.escape(code), "你的课程代码"))
-            for course in set(re.findall(r'"name"\s*:\s*"([^"]{8,60})"', text)):
-                facts.append((re.escape(course), "你的课程名"))
+                facts.append({"pattern": re.escape(code), "label": "你的课程代码"})
+            for course in set(re.findall(r'"(?:name|course)"\s*:\s*"([^"]{8,60})"', text)):
+                facts.append({"pattern": re.escape(course), "label": "你的课程名"})
     # 去重，保持稳定顺序
     seen, out = set(), []
-    for pattern, label in facts:
-        if pattern not in seen:
-            seen.add(pattern)
-            out.append((pattern, label))
+    for fact in facts:
+        if fact["pattern"] not in seen:
+            seen.add(fact["pattern"])
+            out.append(fact)
     return out
+
+
+MAX_PER_RULE_PER_FILE = 5
 
 
 def scan_text(text, rules, where):
     hits = []
     lines = text.splitlines()
-    for pattern, label in rules:
+    for rule in rules:
+        pattern = rule["pattern"]
+        label = rule["label"]
+        require = rule.get("require")
+        found = 0
         for match in re.finditer(pattern, text):
             line = text.count("\n", 0, match.start()) + 1
+            current = lines[line - 1] if 0 < line <= len(lines) else ""
             # 行内豁免：文档里写明示例是安全的，就在那一行加 privacy:ignore
-            if 0 < line <= len(lines) and "privacy:ignore" in lines[line - 1]:
+            if "privacy:ignore" in current:
+                continue
+            # 语境要求：十位数字只有出现在“学号”附近才算，避免把时间戳当学号
+            if require and not re.search(require, current, re.I):
                 continue
             sample = text[max(0, match.start() - 30):match.end() + 30].replace("\n", " ")
             hits.append((where, line, label, match.group(0)[:60], sample[:90]))
-            break
+            found += 1
+            if found >= MAX_PER_RULE_PER_FILE:
+                break
     return hits
 
 
