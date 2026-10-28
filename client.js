@@ -1154,7 +1154,7 @@ window.__ModuleLoader__.load({
                                   : (item.doc ? [{ lang: 'en', path: item.doc }] : []);
                                 const enDoc = list.find(function (d) { return d.lang === 'en'; });
                                 const sourceDoc = list.find(function (d) { return d.lang === 'source'; });
-                                const readDoc = enDoc || sourceDoc;
+                                const readDoc = sourceDoc || enDoc;
                                 const chips = [];
                                 if (readDoc) {
                                   chips.push(
@@ -1162,10 +1162,10 @@ window.__ModuleLoader__.load({
                                       'a',
                                       {
                                         key: 'read',
-                                        href: ENGINE + '/reading?path=' + encodeURIComponent(readDoc.path),
+                                        href: ENGINE + '/reading.pdf?path=' + encodeURIComponent(readDoc.path),
                                         target: '_blank',
                                         rel: 'noreferrer',
-                                        title: '完整原文，每段下方是中文翻译',
+                                        title: '生成中英对照 PDF（原文 + 逐段翻译），可直接保存/打印',
                                         style: {
                                           display: 'inline-flex',
                                           alignItems: 'center',
@@ -2978,7 +2978,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.6.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.7.0'),
         ),
         h(
           'div',
