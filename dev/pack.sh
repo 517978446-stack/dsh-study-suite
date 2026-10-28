@@ -33,6 +33,8 @@ mkdir -p "$PKG/plugin" "$PKG/service"
 
 # 共享核心
 cp -R "$SRC/service/." "$PKG/service/"
+# 本机编译出来的 .pyc 会带上绝对路径，隐私检查会拦，直接清掉
+find "$PKG" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 # Windows：脚本摊到根，OCR 桥接跟 service 走（服务端从 service/ 取）
 cp "$SRC"/platform/windows/{install.ps1,doctor.ps1,check-win.ps1,remind-windows.ps1,watchdog.ps1} "$PKG/"

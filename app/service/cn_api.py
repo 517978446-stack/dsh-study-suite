@@ -151,6 +151,48 @@ def _course_bundle(entry):
     }
 
 
+def assignments():
+    """每门课的成绩册条目（作业 / 测验 / 附件），带截止时间。
+
+    gradebook_item 里有 end_time / final_end_time（Unix 秒），这就是作业的
+    截止时间。提交状态需要额外接口，这里只负责「有哪些作业、什么时候交」，
+    「交没交」由用户在面板里勾。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(entry):
+        try:
+            data = call("/api/course_gradebook_item/", {"course_id": entry["internal_id"]})
+        except Exception as err:
+            return {
+                "number": entry["number"],
+                "name": entry["name"],
+                "error": str(err)[:120],
+                "items": [],
+            }
+        items = []
+        for item in data.get("data") or []:
+            if not item.get("is_displayable", True) or item.get("mute"):
+                continue
+            due = item.get("final_end_time") or item.get("end_time") or None
+            items.append(
+                {
+                    "id": item.get("id"),
+                    "title": (item.get("name") or "").strip(),
+                    "type": item.get("content_type") or "",
+                    "calc": item.get("type") or "",
+                    "points": item.get("grade"),
+                    "due": due,
+                    "description": (item.get("description") or "")[:200],
+                }
+            )
+        return {"number": entry["number"], "name": entry["name"], "error": "", "items": items}
+
+    entries = courses()
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        return list(pool.map(one, entries))
+
+
 def digest():
     """Parallel fetch of every enrolled course. Uses threads, no browser."""
     from concurrent.futures import ThreadPoolExecutor
@@ -182,6 +224,8 @@ if __name__ == "__main__":
         print(json.dumps(courses(), ensure_ascii=False, indent=2)[:1500])
     elif cmd == "course":
         print(json.dumps(course(sys.argv[2]), ensure_ascii=False, indent=2)[:1200])
+    elif cmd == "assignments":
+        print(json.dumps(assignments(), ensure_ascii=False, indent=2))
     elif cmd == "digest":
         print(json.dumps(digest(), ensure_ascii=False, indent=2))
     elif cmd == "snapshot":

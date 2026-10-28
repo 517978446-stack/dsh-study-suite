@@ -29,6 +29,13 @@ import os
 import pathlib
 import re
 import sys
+
+# Windows 控制台默认 GBK，打印中文/替换字符会 UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import zipfile
 
 GENERIC = [

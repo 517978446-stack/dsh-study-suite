@@ -727,6 +727,7 @@ window.__ModuleLoader__.load({
         }
       });
       const [updatedAt, setUpdatedAt] = React.useState('');
+      const [planNotice, setPlanNotice] = React.useState('');
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
       const [frontDraft, setFrontDraft] = React.useState('');
@@ -811,6 +812,7 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         loadDigest();
         loadPlan();
+        syncAssignments(true);
         fetch(ENGINE + '/hidden', { cache: 'no-store' })
           .then(function (r) { return r.json(); })
           .then(function (data) { setHiddenCourses((data && data.names) || []); })
@@ -832,6 +834,35 @@ window.__ModuleLoader__.load({
           setPlan({ items: [], loading: false, error: '读不到课程待办' });
         } finally {
           if (manual) setTimeout(function () { setRefreshing(false); }, 600);
+        }
+      }
+
+      async function syncAssignments(silent) {
+        if (!silent) setRefreshing(true);
+        if (!silent) setPlanNotice('正在从 CN 拉作业…');
+        try {
+          const response = await fetch(ENGINE + '/plan/refresh', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+          });
+          const data = await response.json();
+          if (!response.ok || data.error) throw new Error(data.error || '同步失败');
+          setPlan({ items: data.items || [], loading: false, error: '' });
+          setUpdatedAt(new Date().toTimeString().slice(0, 8));
+          const failed = (data.errors || []).length;
+          setPlanNotice('已同步 ' + (data.count || 0) + ' 项作业' + (failed ? '（' + failed + ' 门课没拉到）' : ''));
+        } catch (err) {
+          const message = String((err && err.message) || err);
+          if (silent) {
+            setPlan(function (prev) { return Object.assign({}, prev, { loading: false }); });
+            setPlanNotice('还没同步过 CN 作业：点「同步作业」试试（未登录会失败）');
+          } else {
+            setPlan(function (prev) { return Object.assign({}, prev, { loading: false, error: message }); });
+            setPlanNotice('');
+          }
+        } finally {
+          if (!silent) setTimeout(function () { setRefreshing(false); }, 600);
         }
       }
 
@@ -1713,11 +1744,15 @@ window.__ModuleLoader__.load({
                       ? '显示已完成（' + plan.items.filter(function (i) { return i.done; }).length + '）'
                       : '只看未完成',
                 ),
-                h(Button, { onClick: function () { loadPlan(true); } }, refreshing ? '刷新中…' : '刷新'),
+                h(Button, { onClick: function () { syncAssignments(false); }, primary: true }, refreshing ? '同步中…' : '同步作业'),
+                h(Button, { onClick: function () { loadPlan(true); } }, '刷新'),
               ),
             },
             plan.error
               ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, plan.error)
+              : null,
+            planNotice
+              ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, planNotice)
               : null,
             plan.items.length === 0 && !plan.loading && !plan.error
               ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
@@ -4526,7 +4561,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.14.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.4'),
         ),
         h(
           'div',

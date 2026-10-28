@@ -1216,6 +1216,24 @@ def parse_timetable(text, blocks=None):
     return out
 
 
+def course_code(name):
+    """从 CN 的课程名里取出课程代码，例如 2026-09_ABC123_Introduction -> ABC123。"""
+    match = re.search(r"[A-Z]{2,4}\s?\d{3,4}", name or "")
+    return match.group(0).replace(" ", "") if match else ""
+
+
+def cn_assignments():
+    """CN 成绩册里的作业条目；没登录就抛 BadRequest。"""
+    if not os.path.exists(os.path.join(SECRETS_DIR, "cn-state.json")):
+        raise BadRequest("还没有登录 CN：先在面板里导入一次登录")
+    sys.path.insert(0, HERE)
+    try:
+        import cn_api as cn_module
+    except Exception as err:
+        raise BadRequest("读不到 cn_api.py：%s" % err)
+    return cn_module.assignments()
+
+
 def cn_verify_token(token):
     """Call /api/me/ with this token before saving it.
 
@@ -3062,7 +3080,8 @@ class Handler(BaseHTTPRequestHandler):
                  "/brief", "/check", "/cn/token", "/cn/login", "/cn/logout",
                  "/timetable/add", "/timetable/save", "/timetable/import",
                  "/hidden/toggle",
-                 "/aidetect", "/digest/refresh", "/release", "/plan/toggle")
+                 "/aidetect", "/digest/refresh", "/release", "/plan/toggle",
+                 "/plan/refresh")
         if route not in known:
             self._json({"error": "unknown endpoint: %s" % route}, 404)
             return
@@ -3163,6 +3182,71 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(err)}, 400)
             except Exception as err:
                 self._json({"ok": False, "error": "token 验证失败：%s" % err}, 400)
+            return
+
+        if route_path.endswith("/plan/refresh"):
+            try:
+                rows = cn_assignments()
+                plan = read_plan_file()
+                previous = {}
+                manual = []
+                for item in plan.get("items") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    if str(item.get("id", "")).startswith("cn:"):
+                        previous[item.get("id")] = item
+                    else:
+                        manual.append(item)
+                fresh = []
+                failures = []
+                for row in rows:
+                    if row.get("error"):
+                        failures.append("%s: %s" % (row.get("name") or row.get("number"), row["error"]))
+                    code = course_code(row.get("name")) or (row.get("number") or "")
+                    for item in row.get("items") or []:
+                        title = (item.get("title") or "").strip()
+                        if not title:
+                            continue
+                        item_id = "cn:%s:%s" % (row.get("number"), item.get("id"))
+                        due = ""
+                        if item.get("due"):
+                            try:
+                                due = datetime.datetime.fromtimestamp(float(item["due"])).strftime("%Y-%m-%d")
+                            except (TypeError, ValueError, OSError, OverflowError):
+                                due = ""
+                        prev = previous.get(item_id) or {}
+                        kind = item.get("type") or ""
+                        note = ("截止 " + due) if due else kind
+                        fresh.append(
+                            {
+                                "id": item_id,
+                                "kind": "assignment",
+                                "course": code,
+                                "title": title,
+                                "note": note,
+                                "due": due,
+                                "type": kind,
+                                "points": item.get("points"),
+                                "done": bool(prev.get("done")),
+                            }
+                        )
+                fresh.sort(key=lambda entry: (entry.get("due") or "9999-99-99", entry.get("course") or "", entry.get("title") or ""))
+                plan["items"] = manual + fresh
+                plan.setdefault("state", {})
+                plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
+                save_plan(plan)
+                self._json(
+                    {
+                        "ok": True,
+                        "count": len(fresh),
+                        "errors": failures,
+                        "items": load_plan()["items"],
+                    }
+                )
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": "抓取作业失败：%s" % err}, 500)
             return
 
         if route_path.endswith("/plan/toggle"):
