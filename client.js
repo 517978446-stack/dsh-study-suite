@@ -558,7 +558,7 @@ window.__ModuleLoader__.load({
       }
       const cards = state.cards;
       const active = cards.length ? cards[((cardIndex % cards.length) + cards.length) % cards.length] : null;
-      const linked = state.courses.filter((item) => item.url).length;
+      const linked = visibleCourses.filter((item) => item.url).length;
 
       async function loadDigest() {
         setDigest(function (prev) {
