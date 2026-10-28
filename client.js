@@ -1204,7 +1204,11 @@ window.__ModuleLoader__.load({
                       setShowDone(!showDone);
                     },
                   },
-                  showDone ? '只看未完成' : '显示已完成（' + plan.items.filter(function (i) { return i.done; }).length + '）',
+                  showDone
+                    ? '只看未完成'
+                    : plan.items.some(function (i) { return i.done; })
+                      ? '显示已完成（' + plan.items.filter(function (i) { return i.done; }).length + '）'
+                      : '只看未完成',
                 ),
                 h(Button, { onClick: function () { loadPlan(true); } }, refreshing ? '刷新中…' : '刷新'),
               ),
@@ -1687,7 +1691,14 @@ window.__ModuleLoader__.load({
         return;
       }
       onProgress({ status: 'running', done: prepared.done || 0, total: prepared.total || 0 });
+      let polls = 0;
       const tick = setInterval(async function () {
+        polls += 1;
+        if (polls > 400) {                 // 约 6 分钟，防止无限轮询
+          clearInterval(tick);
+          onProgress({ status: 'error', error: '生成超时，请重试或改用快速引擎' });
+          return;
+        }
         try {
           const response = await fetch(
             endpoint + '/reading/status?path=' + encodeURIComponent(path),
@@ -2871,7 +2882,10 @@ window.__ModuleLoader__.load({
         ),
         h('textarea', {
           value: docText,
-          onChange: (event) => setDocText(event.target.value),
+          onChange: (event) => {
+            setDocText(event.target.value);
+            if (docFile) setDocFile(null);
+          },
           onDragOver: (event) => event.preventDefault(),
           onDrop: (event) => {
             event.preventDefault();
@@ -3941,7 +3955,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.7.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.7.1'),
         ),
         h(
           'div',
