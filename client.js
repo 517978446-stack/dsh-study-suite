@@ -4240,7 +4240,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.9.3'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.9.4'),
         ),
         h(
           'div',
