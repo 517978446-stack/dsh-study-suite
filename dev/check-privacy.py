@@ -10,6 +10,9 @@ Two layers:
   * local facts read from ~/.secrets and plan.json / timetable.json, so a course
     code is caught only because it is really *your* course
 
+A line containing ``privacy:ignore`` is skipped, so documentation can quote
+examples without failing the build.
+
 Run:
   python3 dev/check-privacy.py                      # packages/*.zip
   python3 dev/check-privacy.py path/to.zip ...      # specific archives
@@ -81,9 +84,13 @@ def local_facts():
 
 def scan_text(text, rules, where):
     hits = []
+    lines = text.splitlines()
     for pattern, label in rules:
         for match in re.finditer(pattern, text):
             line = text.count("\n", 0, match.start()) + 1
+            # 行内豁免：文档里写明示例是安全的，就在那一行加 privacy:ignore
+            if 0 < line <= len(lines) and "privacy:ignore" in lines[line - 1]:
+                continue
             sample = text[max(0, match.start() - 30):match.end() + 30].replace("\n", " ")
             hits.append((where, line, label, match.group(0)[:60], sample[:90]))
             break
@@ -140,8 +147,11 @@ def main():
             hits += scan_tree(target, rules)
         elif target.endswith(".zip"):
             hits += scan_zip(target, rules)
+        elif os.path.isfile(target):
+            text = open(target, encoding="utf-8", errors="replace").read()
+            hits += scan_text(text, rules, target)
         else:
-            print("跳过（不是目录或 zip）:", target)
+            print("跳过（不存在）:", target)
 
     if not hits:
         print("隐私检查：%d 个目标，%d 条规则，未发现个人信息" % (len(args), len(rules)))

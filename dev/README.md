@@ -95,14 +95,16 @@ python3 "$HOME/.dsh-study-suite/smoke.py"
 | 检查项 | 例子 |
 |---|---|
 | macOS / Windows 家目录路径 | `/Users/你的名字/…` |
-| 个人工作区目录名 | `学习区` |
+| 个人工作区目录名 | 本机工作目录的名字 |
 | 个人邮箱 | `@ucsiuniversity` / `@gmail` 等 |
-| 十位学号样式数字 | `1002580997` |
+| 十位数字 | 学号/手机号样式 |
 | 你的 CN token 原值 | 从 `secrets/cn-state.json` 读 |
 | 你的课程代码 | 从 `plan.json` / `timetable.json` 读 |
 
 CI 里也会跑两次：`check.yml` 扫仓库源码（只用通用规则，CI 上没有你的本地文件），
 `release.yml` 扫 `packages/*.zip`（用通用规则，因为 runner 上没有你的数据）。
+
+文档里要举例时，在那一行末尾加 `# privacy:ignore`，扫描会跳过该行，CI 不会因为说明文字而失败。
 
 手动检查任意包：
 
