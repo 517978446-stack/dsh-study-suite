@@ -2287,8 +2287,28 @@ class BadRequest(Exception):
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def _origin_allowed(self):
+        """只有本机页面可以调用这个服务。
+
+        面板跑在 http://127.0.0.1:<port>，但服务对 127.0.0.1 完全开放且回
+        Access-Control-Allow-Origin: *，结果任意网站都能读到 /plan、/timetable、
+        /digest（个人课程与截止日期），也能让 /brief 读本地 PDF。这里按 Origin
+        收紧：非本机来源直接 403，且不再回 ACAO。
+        """
+        origin = self.headers.get("Origin") or ""
+        if not origin:
+            return True          # curl / 本机脚本不带 Origin
+        try:
+            host = (urllib.parse.urlparse(origin).hostname or "").lower()
+        except Exception:
+            return False
+        return host in ("127.0.0.1", "localhost", "::1")
+
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if origin and self._origin_allowed():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         # 把浏览器实际请求的头原样放行：上传文件会带 x-filename，只写 content-type 会导致 Failed to fetch
         requested = self.headers.get("Access-Control-Request-Headers")
         self.send_header("Access-Control-Allow-Headers", requested or "content-type, x-filename")
@@ -2306,6 +2326,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self):
+        if not self._origin_allowed():
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self.send_response(204)
         self._cors()
         self.send_header("Content-Length", "0")
@@ -2313,6 +2338,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         route = self.path.split("?")[0].rstrip("/") or "/"
+        if not self._origin_allowed() and route not in ("/health",):
+            self._json({"error": "来源不被允许"}, 403)
+            return
         if route in ("/", "/index.html"):
             body = WELCOME_PAGE.encode("utf-8")
             self.send_response(200)
@@ -2597,6 +2625,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle_post(self):
+        if not self._origin_allowed():
+            self._json({"error": "来源不被允许"}, 403)
+            return
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b""
         route = self.path.split("?")[0].rstrip("/") or "/"
