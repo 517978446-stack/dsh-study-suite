@@ -692,21 +692,22 @@ window.__ModuleLoader__.load({
           },
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px' } },
+            {
+              onClick: function () { toggleCourse(item.name); },
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 8px',
+                cursor: info ? 'pointer' : 'default',
+              },
+            },
             h(
-              'button',
+              'span',
               {
-                type: 'button',
-                onClick: function () { toggleCourse(item.name); },
-                disabled: !info,
-                title: info ? '展开章节与公告' : '还没有抓到这门课的内容',
                 style: {
-                  border: 'none',
-                  background: 'transparent',
                   color: info ? C.muted : 'transparent',
-                  cursor: info ? 'pointer' : 'default',
                   fontSize: 11,
-                  padding: 0,
                   width: 12,
                   flex: '0 0 auto',
                 },
@@ -749,12 +750,14 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
-                onClick: () =>
+                onClick: (event) => {
+                  event.stopPropagation();
                   setEditingCourse(function (prev) {
                     var next = Object.assign({}, prev);
                     next[item.id] = !next[item.id];
                     return next;
-                  }),
+                  });
+                },
                 title: '修改这门课的网址',
                 style: {
                   border: 'none',
@@ -774,6 +777,7 @@ window.__ModuleLoader__.load({
                 href: item.url || state.listUrl,
                 target: '_blank',
                 rel: 'noreferrer',
+                onClick: (event) => event.stopPropagation(),
                 style: Object.assign(pillStyle(!!item.url), { height: 26 }),
               },
               item.url ? '打开' : '去课程页',
@@ -782,7 +786,10 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
-                onClick: () => removeCourse(item.id),
+                onClick: (event) => {
+                  event.stopPropagation();
+                  removeCourse(item.id);
+                },
                 title: '从清单里移除',
                 style: {
                   border: 'none',
@@ -2846,7 +2853,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.1.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.2.0'),
         ),
         h(
           'div',
