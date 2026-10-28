@@ -25,6 +25,9 @@ jobs:
           ls -lh packages/*.zip
           test "$(ls packages/*.zip | wc -l)" -ge 1
 
+      - name: 发布前确认包内没有个人信息
+        run: python3 dev/check-privacy.py packages/*.zip
+
       - name: 建 Release 并上传资产
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
