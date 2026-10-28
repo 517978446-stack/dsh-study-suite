@@ -455,9 +455,89 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const [draft, setDraft] = React.useState({ day: '1', start: '08:00', course: '', room: '' })
+      const [notice, setNotice] = React.useState('')
+
       React.useEffect(function () {
         loadTimetable();
       }, []);
+
+      function editDraft(patch) {
+        setDraft(function (prev) { return Object.assign({}, prev, patch) })
+      }
+
+      async function importScreenshot(file) {
+        setNotice('正在识别截图…')
+        setTimetable(function (prev) { return Object.assign({}, prev, { loading: true, error: '' }) })
+        try {
+          const buffer = await file.arrayBuffer()
+          const resp = await fetch(ENGINE + '/timetable/import', {
+            method: 'POST',
+            headers: { 'content-type': 'application/octet-stream', 'x-filename': file.name || 'timetable.png' },
+            body: buffer,
+          })
+          const data = await resp.json()
+          if (!resp.ok || data.error) throw new Error(data.error || '识别失败')
+          const currentResp = await fetch(ENGINE + '/timetable', { cache: 'no-store' })
+          const current = await currentResp.json()
+          const existing = current.classes || []
+          const seen = {}
+          existing.forEach(function (item) { seen[item.day + '|' + item.start + '|' + item.course] = true })
+          const fresh = (data.classes || []).filter(function (item) {
+            const key = item.day + '|' + item.start + '|' + item.course
+            if (seen[key]) return false
+            seen[key] = true
+            return true
+          })
+          if (!fresh.length) {
+            setTimetable({ classes: existing, loading: false, error: '' })
+            setNotice('这些课已经在课表里了，没有重复添加')
+            return
+          }
+          const merged = existing.concat(fresh)
+          const saveResp = await fetch(ENGINE + '/timetable/save', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ classes: merged }),
+          })
+          const saved = await saveResp.json()
+          if (!saveResp.ok || saved.error) throw new Error(saved.error || '保存失败')
+          setTimetable({ classes: saved.classes || merged, loading: false, error: '' })
+          setNotice('识别到 ' + fresh.length + ' 节课程，已加入课表')
+        } catch (err) {
+          setTimetable(function (prev) {
+            return Object.assign({}, prev, { loading: false, error: String((err && err.message) || err) })
+          })
+          setNotice('')
+        }
+      }
+
+      async function submitManual() {
+        const course = (draft.course || '').trim()
+        if (!course) {
+          setNotice('先写课程名')
+          return
+        }
+        const day = Number(draft.day)
+        if (!(day >= 1 && day <= 7)) {
+          setNotice('星期填 1-7（周一=1）')
+          return
+        }
+        try {
+          const resp = await fetch(ENGINE + '/timetable/add', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ course: course, day: day, start: draft.start || '08:00', room: (draft.room || '').trim() }),
+          })
+          const data = await resp.json()
+          if (!resp.ok || data.error) throw new Error(data.error || '添加失败')
+          setTimetable({ classes: data.classes || [], loading: false, error: '' })
+          editDraft({ course: '', room: '' })
+          setNotice('已添加 ' + course)
+        } catch (err) {
+          setNotice(String((err && err.message) || err))
+        }
+      }
 
       return h(
         'div',
@@ -474,6 +554,64 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { style: { maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 } },
+          h(
+            'div',
+            { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+            h('input', {
+              type: 'file',
+              accept: 'image/*',
+              style: { display: 'none' },
+              id: 'ss-timetable-upload',
+              onChange: function (event) {
+                const file = event.target.files && event.target.files[0]
+                event.target.value = ''
+                if (file) importScreenshot(file)
+              },
+            }),
+            h(Button, {
+              primary: true,
+              onClick: function () {
+                const input = document.getElementById('ss-timetable-upload')
+                if (input) input.click()
+              },
+            }, timetable.loading ? '识别中…' : '上传截图识别'),
+            h('span', { style: { fontSize: 12, color: C.muted } }, '课表截图或拍照都行，识别后自动加入'),
+          ),
+          h(
+            'div',
+            { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
+            h(Field, {
+              value: draft.course,
+              placeholder: '课程名',
+              style: { flex: '2 1 200px' },
+              onChange: function (value) { editDraft({ course: value }) },
+            }),
+            h(Field, {
+              value: draft.day,
+              placeholder: '星期 1-7',
+              style: { flex: '0 0 86px' },
+              onChange: function (value) { editDraft({ day: value }) },
+            }),
+            h(Field, {
+              value: draft.start,
+              placeholder: '08:00',
+              style: { flex: '0 0 82px' },
+              onChange: function (value) { editDraft({ start: value }) },
+            }),
+            h(Field, {
+              value: draft.room,
+              placeholder: '教室',
+              style: { flex: '1 1 110px' },
+              onChange: function (value) { editDraft({ room: value }) },
+              onKeyDown: function (event) {
+                if (event.key === 'Enter') submitManual()
+              },
+            }),
+            h(Button, { onClick: submitManual }, '添加'),
+          ),
+          notice
+            ? h('div', { style: { fontSize: 12, color: C.muted } }, notice)
+            : null,
           h(
             Card,
             {

@@ -142,6 +142,42 @@ def ocr_image(path):
     return "\n".join(_ocr_lines(result))
 
 
+def ocr_result(path):
+    """原始识别结果：[[box, text, score], ...]，留着坐标后面拼表格用。"""
+    result, _elapse = _ocr_engine()(path)
+    return result or []
+
+
+def text_from_result(result):
+    return "\n".join(_ocr_lines(result))
+
+
+def blocks_from_result(result):
+    """[box, text] → [{text, x, y}]，x/y 取文本框中心。"""
+    blocks = []
+    for item in result or []:
+        try:
+            box = item[0]
+            text = (item[1] or "").strip()
+        except (TypeError, IndexError, AttributeError):
+            continue
+        if not text or not box or len(box) < 4:
+            continue
+        xs = [point[0] for point in box]
+        ys = [point[1] for point in box]
+        blocks.append(
+            {
+                "text": text,
+                "x": sum(xs) / len(xs),
+                "y": sum(ys) / len(ys),
+                "left": min(xs),
+                "top": min(ys),
+                "bottom": max(ys),
+            }
+        )
+    return blocks
+
+
 def ocr_pdf(path, dpi=240):
     """进程内识别扫描版 PDF：PyMuPDF 渲染 + 同一套 OCR 引擎。"""
     import fitz
@@ -930,6 +966,256 @@ def cn_login_browser(timeout=300):
     return name
 
 
+def load_timetable():
+    try:
+        with open(TIMETABLE_FILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return {"classes": []}
+    except Exception:
+        return {"classes": []}
+    if not isinstance(data, dict):
+        return {"classes": []}
+    data.setdefault("classes", [])
+    return data
+
+
+def save_timetable(data):
+    tmp = TIMETABLE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=2)
+    os.replace(tmp, TIMETABLE_FILE)
+
+
+def normalize_class(item):
+    """把一条课程规整成面板要的结构，非法就抛 BadRequest。"""
+    if not isinstance(item, dict):
+        raise BadRequest("课程必须是对象")
+    course = str(item.get("course") or "").strip()
+    if not course:
+        raise BadRequest("缺少课程名")
+    try:
+        day = int(item.get("day"))
+    except (TypeError, ValueError):
+        raise BadRequest("day 必须是 1-7")
+    if day < 1 or day > 7:
+        raise BadRequest("day 必须是 1-7")
+    start = str(item.get("start") or "").strip()
+    if not re.fullmatch(r"\d{1,2}:\d{2}", start):
+        raise BadRequest("start 必须是 HH:MM")
+    hour, minute = start.split(":")
+    start = "%02d:%02d" % (int(hour), int(minute))
+    return {
+        "day": day,
+        "start": start,
+        "course": course[:80],
+        "room": str(item.get("room") or "").strip()[:40],
+    }
+
+
+TIMETABLE_PROMPT = """你是一个课表解析器。用户给你一段从课表截图 OCR 出来的文字，
+里面可能有星期、节次、时间、课程名、教室，排版可能乱。
+
+请输出**纯 JSON 数组**，不要任何解释、不要 Markdown 代码块。每个元素：
+{"day": 1-7 的整数（周一=1）, "start": "HH:MM", "course": "课程名", "room": "教室或空字符串"}
+
+规则：
+- 只有能确定星期和时间的才输出；不确定的不要编造
+- 时间是 24 小时制，例如 "08:00"
+- 如果同一门课一周多次，按次数分别输出
+- 没有教室就留空字符串
+- 最多 40 条
+
+OCR 文本：
+"""
+
+
+DAY_WORDS = [
+    ("星期一", 1), ("周一", 1), ("礼拜一", 1), ("mon", 1),
+    ("星期二", 2), ("周二", 2), ("礼拜二", 2), ("tue", 2),
+    ("星期三", 3), ("周三", 3), ("礼拜三", 3), ("wed", 3),
+    ("星期四", 4), ("周四", 4), ("礼拜四", 4), ("thu", 4),
+    ("星期五", 5), ("周五", 5), ("礼拜五", 5), ("fri", 5),
+    ("星期六", 6), ("周六", 6), ("礼拜六", 6), ("sat", 6),
+    ("星期日", 7), ("星期天", 7), ("周日", 7), ("周天", 7), ("sun", 7),
+]
+
+TIME_RE = re.compile(r"(\d{1,2})\s*[:：]\s*(\d{2})")
+ROOM_RE = re.compile(r"^[A-Za-z]{0,3}\s*[-－]?\s*\d{1,2}\s*[-－]?\s*\d{2,4}$")
+
+
+def day_index(text):
+    lowered = (text or "").replace(" ", "").lower()
+    for word, index in DAY_WORDS:
+        if word in lowered:
+            return index
+    return None
+
+
+def clock_in(text):
+    """从一段文字里取 HH:MM，返回补零后的字符串。"""
+    match = TIME_RE.search(text or "")
+    if not match:
+        return ""
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    if hour > 23 or minute > 59:
+        return ""
+    return "%02d:%02d" % (hour, minute)
+
+
+def looks_like_room(text):
+    text = (text or "").strip()
+    if not text or len(text) > 14:
+        return False
+    if ROOM_RE.match(text):
+        return True
+    return any(word in text for word in ("教室", "机房", "实验室", "楼", "室"))
+
+
+def timetable_from_blocks(blocks):
+    """把带坐标的 OCR 块还原成课表。
+
+    表头的「周一…周五」给出每列的 x；剩下的块先按 y 聚成行、再按 x 归到最近
+    的列。课表里一行常有两三个时间（开始/结束），教室名也常单独占一行，所以
+    「没有课程名的行」并回上一门课。全程不依赖大模型。
+    """
+    if not blocks:
+        return []
+    height = max(block["bottom"] for block in blocks) or 1
+
+    headers = []
+    for block in blocks:
+        index = day_index(block["text"])
+        if index and len(block["text"]) <= 8 and not clock_in(block["text"]):
+            headers.append((index, block["x"], block["y"]))
+    if len(headers) < 2:
+        return []
+    header_y = sorted(item[2] for item in headers)[len(headers) // 2]
+    tolerance = height * 0.06
+    col_map = [(day, x) for day, x, y in headers if abs(y - header_y) <= tolerance]
+    if len(col_map) < 2:
+        col_map = [(day, x) for day, x, y in headers]
+    left_edge = min(x for _, x in col_map)
+
+    def nearest_day(x):
+        return min(col_map, key=lambda item: abs(item[1] - x))[0]
+
+    def is_time_only(text):
+        if not TIME_RE.search(text or ""):
+            return False
+        rest = re.sub(TIME_RE, "", text)
+        return len(re.sub(r"[\s:：\-－—~～至到]", "", rest)) <= 2
+
+    row_gap = height * 0.05
+    rows = []
+    body = [block for block in blocks if block["y"] > header_y + tolerance * 0.4]
+    body.sort(key=lambda block: block["y"])
+    for block in body:
+        if rows and block["y"] - rows[-1]["y"] <= row_gap:
+            rows[-1]["blocks"].append(block)
+            count = len(rows[-1]["blocks"])
+            rows[-1]["y"] = (rows[-1]["y"] * (count - 1) + block["y"]) / count
+        else:
+            rows.append({"y": block["y"], "blocks": [block]})
+
+    cells = {}
+    pending = []
+    last_start = ""
+    last_course_start = ""
+    for row in rows:
+        start = ""
+        courses = []
+        rooms = []
+        for block in row["blocks"]:
+            text = block["text"].strip()
+            if not text:
+                continue
+            # 左侧那列是时间轴，不参与列归属
+            if block["x"] < left_edge - height * 0.01 and is_time_only(text):
+                start = start or clock_in(text)
+                continue
+            day = nearest_day(block["x"])
+            if looks_like_room(text):
+                rooms.append((day, text))
+            else:
+                courses.append((day, text))
+        if start:
+            last_start = start
+        row_start = start or last_start
+        if not courses:
+            # 只有教室的行多半是上一条课程的下半格
+            owner = last_course_start or row_start
+            pending.extend((day, text, owner) for day, text in rooms)
+            continue
+        last_course_start = row_start
+        for day, text in courses:
+            entry = cells.setdefault((day, row_start), {"course": "", "room": ""})
+            cleaned = re.sub(r"\s+", " ", text).strip()
+            if len(cleaned) > len(entry["course"]):
+                entry["course"] = cleaned
+        for day, text, owner in [(d, t, row_start) for d, t in rooms] + pending:
+            entry = cells.setdefault((day, owner), {"course": "", "room": ""})
+            if not entry["room"]:
+                entry["room"] = text.strip()[:30]
+        pending = []
+
+    classes = []
+    for (day, start), entry in cells.items():
+        course = entry["course"]
+        if len(course) < 2:
+            continue
+        classes.append(
+            {
+                "day": day,
+                "start": start,
+                "course": course[:60],
+                "room": (entry.get("room") or "")[:30],
+            }
+        )
+    classes.sort(key=lambda item: (item["day"], item["start"] or ""))
+    return classes if len(classes) >= 2 else []
+
+
+def parse_timetable(text, blocks=None):
+    """课表识别：先按坐标规则解析，不行再交给本地大模型。"""
+    text = (text or "").strip()
+    if len(text) < 10:
+        raise BadRequest("识别到的文字太少，看不清课表")
+    try:
+        rules = timetable_from_blocks(blocks or [])
+    except Exception as err:
+        sys.stderr.write("[timetable] rule parse failed: %s\n" % err)
+        rules = []
+    if rules:
+        return rules
+    try:
+        engine_state = llm_engine()
+    except BadRequest as err:
+        raise BadRequest("课表识别需要本地大模型：%s" % err)
+    if engine_state.get("mode") != "http":
+        raise BadRequest("课表识别需要本地 HTTP 推理服务（Ollama）")
+    raw = _http_chat(TIMETABLE_PROMPT, text, 1200)
+    match = re.search(r"\[[\s\S]*\]", raw or "")
+    if not match:
+        raise BadRequest("模型没有返回 JSON，原文：%s" % (raw or "")[:120])
+    try:
+        items = json.loads(match.group(0))
+    except Exception as err:
+        raise BadRequest("模型返回的 JSON 解析失败：%s" % err)
+    if not isinstance(items, list):
+        raise BadRequest("模型返回的不是数组")
+    out = []
+    for item in items[:40]:
+        try:
+            out.append(normalize_class(item))
+        except BadRequest:
+            continue
+    if not out:
+        raise BadRequest("没从这张图里解析出课程，可以试试更清晰、完整的截图")
+    return out
+
+
 def cn_verify_token(token):
     """Call /api/me/ with this token before saving it.
 
@@ -1053,15 +1339,84 @@ def build_minutes(segments):
     return {"minutes": data, "path": path, "transcript": transcript}
 
 
-def load_plan():
+def read_plan_file():
+    """plan.json 的原始内容（手工待办在 items 里，勾选状态在 state 里）。"""
     if not os.path.exists(PLAN_FILE):
-        return {"items": [], "updatedAt": ""}
+        return {"items": [], "state": {}, "updatedAt": ""}
     try:
         with open(PLAN_FILE, encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
     except Exception as err:
         sys.stderr.write("[interpreter] plan read failed: %s\n" % err)
-        return {"items": [], "updatedAt": ""}
+        return {"items": [], "state": {}, "updatedAt": ""}
+    if not isinstance(data, dict):
+        return {"items": [], "state": {}, "updatedAt": ""}
+    data.setdefault("items", [])
+    data.setdefault("state", {})
+    return data
+
+
+def plan_from_timetable(timetable, today):
+    """把课表里的今天/明天的课变成待办。
+
+    课表是长期配置，待办是每天的视图：所以课程待办不写进 plan.json，
+    每次读的时候按日期派生，勾选状态另外记在 plan.json 的 state 里。
+    """
+    items = []
+    for offset in (0, 1):
+        day = today + datetime.timedelta(days=offset)
+        index = day.isoweekday()
+        for lesson in timetable.get("classes") or []:
+            try:
+                lesson_day = int(lesson.get("day") or 0)
+            except (TypeError, ValueError):
+                continue
+            if lesson_day != index:
+                continue
+            course = (lesson.get("course") or "").strip()
+            if not course:
+                continue
+            start = (lesson.get("start") or "").strip()
+            room = (lesson.get("room") or "").strip()
+            note = " · ".join(x for x in ("今天" if offset == 0 else "明天", start, room) if x)
+            items.append(
+                {
+                    "id": "class:%s:%s:%s" % (day.isoformat(), start, course),
+                    "kind": "class",
+                    "course": course,
+                    "title": "上课" if not start else "%s 上课" % start,
+                    "note": note,
+                    "due": day.isoformat(),
+                    "start": start,
+                    "room": room,
+                    "done": False,
+                }
+            )
+    items.sort(key=lambda item: (item.get("due") or "", item.get("start") or ""))
+    return items
+
+
+def load_plan():
+    data = read_plan_file()
+    manual = [item for item in (data.get("items") or []) if isinstance(item, dict)]
+    state = data.get("state") or {}
+    seen = set(item.get("id") for item in manual)
+    merged = list(manual)
+    for item in plan_from_timetable(load_timetable(), datetime.date.today()):
+        if item.get("id") in seen:
+            continue
+        # 已经上过（当天已过点且勾过）就不冒出来
+        merged.append(item)
+    for item in merged:
+        item_id = item.get("id")
+        if item_id in state:
+            item["done"] = bool(state[item_id])
+    out = dict(data)
+    out["items"] = merged
+    out["state"] = state
+    if not out.get("updatedAt"):
+        out["updatedAt"] = ""
+    return out
 
 
 def save_plan(plan):
@@ -2705,6 +3060,7 @@ class Handler(BaseHTTPRequestHandler):
 
         known = ("/translate", "/translate/batch", "/asr", "/minutes", "/summary", "/extract",
                  "/brief", "/check", "/cn/token", "/cn/login", "/cn/logout",
+                 "/timetable/add", "/timetable/save", "/timetable/import",
                  "/hidden/toggle",
                  "/aidetect", "/digest/refresh", "/release", "/plan/toggle")
         if route not in known:
@@ -2724,6 +3080,65 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "removed": removed})
             except Exception as err:
                 self._json({"ok": False, "error": str(err)}, 500)
+            return
+
+        if route_path.endswith("/timetable/add"):
+            try:
+                payload_in = json.loads(raw.decode("utf-8") or "{}")
+                item = normalize_class(payload_in)
+                data = load_timetable()
+                data["classes"].append(item)
+                save_timetable(data)
+                self._json({"ok": True, "classes": data["classes"]})
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": str(err)}, 500)
+            return
+
+        if route_path.endswith("/timetable/save"):
+            try:
+                payload_in = json.loads(raw.decode("utf-8") or "{}")
+                items = payload_in.get("classes") or []
+                if not isinstance(items, list):
+                    raise BadRequest("classes 必须是数组")
+                cleaned = [normalize_class(x) for x in items][:40]
+                save_timetable({"classes": cleaned})
+                self._json({"ok": True, "classes": cleaned})
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": str(err)}, 500)
+            return
+
+        if route_path.endswith("/timetable/import"):
+            try:
+                if len(raw) < 5:
+                    raise BadRequest("图片是空的")
+                if len(raw) > 20 * 1024 * 1024:
+                    raise BadRequest("图片太大（超过 20MB），先压缩或裁一下")
+                filename = header_text(self.headers.get("x-filename")) or "timetable.png"
+                path = os.path.join(SECRETS_DIR, "timetable-upload" + os.path.splitext(filename)[1])
+                with open(path, "wb") as handle:
+                    handle.write(raw)
+                try:
+                    result = ocr_result(path)
+                    text = text_from_result(result)
+                    blocks = blocks_from_result(result)
+                finally:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                classes = parse_timetable(text, blocks)
+                payload_out = {"ok": True, "classes": classes, "text": text[:2000]}
+                if "debug=1" in (self.path.split("?") + [""])[1]:
+                    payload_out["blocks"] = blocks
+                self._json(payload_out)
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": str(err)}, 500)
             return
 
         if route_path.endswith("/cn/login"):
@@ -2756,18 +3171,26 @@ class Handler(BaseHTTPRequestHandler):
                 item_id = payload_in.get("id")
                 if not item_id:
                     raise BadRequest("缺少 id")
-                plan = load_plan()
+                done = bool(payload_in.get("done"))
+                plan = read_plan_file()
                 found = False
                 for item in plan.get("items", []):
                     if item.get("id") == item_id:
-                        item["done"] = bool(payload_in.get("done"))
+                        item["done"] = done
                         found = True
                         break
                 if not found:
-                    raise BadRequest("没有这条待办: %s" % item_id)
+                    # 课程待办是派生的，勾选状态单独记，不污染 items
+                    state = plan.setdefault("state", {})
+                    if item_id not in state and not any(
+                        item.get("id") == item_id
+                        for item in plan_from_timetable(load_timetable(), datetime.date.today())
+                    ):
+                        raise BadRequest("没有这条待办: %s" % item_id)
+                    state[item_id] = done
                 plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
                 save_plan(plan)
-                self._json({"ok": True, "items": plan["items"]})
+                self._json({"ok": True, "items": load_plan()["items"]})
             except BadRequest as err:
                 self._json({"error": str(err)}, 400)
             except Exception as err:
