@@ -1172,7 +1172,7 @@ window.__ModuleLoader__.load({
                                       textDecoration: 'none',
                                     },
                                   },
-                                  entry.lang === 'zh' ? '中文' : 'EN',
+                                  entry.lang === 'zh' ? '中文' : entry.lang === 'source' ? 'CN原件' : 'EN',
                                 );
                               }),
                               item.url
@@ -2941,7 +2941,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.4.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.5.0'),
         ),
         h(
           'div',
