@@ -1615,6 +1615,8 @@ window.__ModuleLoader__.load({
         engine: 'fast',
         target: 'zh',
         draftModel: 'base.en',
+        finalModel: '',          // 空 = 服务端默认 small.en；'medium.en' = 精准识别
+        lastText: '',            // 上一句，作为下一句的语境提示
         startedAt: 0,
         paused: false,
         lastLevelAt: 0,
@@ -1709,7 +1711,10 @@ window.__ModuleLoader__.load({
         state.pending = { id: id, at: Date.now() };
         emit('pending', state.pending);
         try {
-          const asr = await fetch(ENDPOINT + '/asr?prompt=auto&vad=0', {
+          let asrUrl = ENDPOINT + '/asr?prompt=auto&vad=0';
+          if (state.finalModel) asrUrl += '&model=' + encodeURIComponent(state.finalModel);
+          if (state.lastText) asrUrl += '&context=' + encodeURIComponent(state.lastText.slice(-200));
+          const asr = await fetch(asrUrl, {
             method: 'POST',
             headers: { 'content-type': 'audio/wav' },
             body: wav,
@@ -1736,6 +1741,7 @@ window.__ModuleLoader__.load({
             speakers: asrData.speakers || 1,
             at: Date.now(),
           };
+          state.lastText = text;
           state.history.unshift(item);
           state.history = state.history.slice(0, 200);
           state.pending = null;
@@ -1845,6 +1851,7 @@ window.__ModuleLoader__.load({
         state.engine = (options && options.engine) || 'fast';
         state.target = (options && options.target) || 'zh';
         state.draftModel = (options && options.draftModel) || 'base.en';
+        state.finalModel = (options && options.finalModel) || '';
         state.lastError = '';
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: Object.assign(
@@ -2247,6 +2254,7 @@ window.__ModuleLoader__.load({
       const [pending, setPending] = React.useState(null);
       const [partialText, setPartialText] = React.useState('');
       const [liveEngine, setLiveEngine] = React.useState('fast');
+      const [liveAccuracy, setLiveAccuracy] = React.useState('standard');
       const [levels, setLevels] = React.useState([]);
       const [elapsed, setElapsed] = React.useState(0);
       const [summary, setSummary] = React.useState([]);
@@ -2542,6 +2550,8 @@ window.__ModuleLoader__.load({
             // 实时字幕优先延迟：7B 每句 2-3 秒，跟不上说话
             engine: liveEngine,
             draftModel: caps.asrDraftModel || 'base.en',
+            // 精准识别用 medium.en：噪声下 WER 9.6%→6.5%，代价是每句多约 2.8 秒
+            finalModel: liveAccuracy === 'high' ? 'medium.en' : '',
             target: toRef.current,
             deviceId: deviceRef.current || undefined,
           });
@@ -2944,6 +2954,19 @@ window.__ModuleLoader__.load({
                   style: Object.assign(pillStyle(liveEngine === 'fast'), { height: 24, fontSize: 11 }) }, '快速'),
                 h('button', { type: 'button', onClick: () => setLiveEngine('llm'), disabled: !caps.llm,
                   style: Object.assign(pillStyle(liveEngine === 'llm'), { height: 24, fontSize: 11, opacity: caps.llm ? 1 : 0.4 }) }, '精准'),
+              ),
+          mic === 'live'
+            ? null
+            : h(
+                'span',
+                { style: { display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11, color: C.muted } },
+                '识别',
+                h('button', { type: 'button', onClick: () => setLiveAccuracy('standard'),
+                  title: 'small.en：每句约 1.2 秒',
+                  style: Object.assign(pillStyle(liveAccuracy === 'standard'), { height: 24, fontSize: 11 }) }, '标准'),
+                h('button', { type: 'button', onClick: () => setLiveAccuracy('high'),
+                  title: 'medium.en：噪声环境更准（WER 9.6%→6.5%），每句多约 2.4 秒；首次使用会下载约 1.5GB',
+                  style: Object.assign(pillStyle(liveAccuracy === 'high'), { height: 24, fontSize: 11 }) }, '高精度'),
               ),
           h(Button, { onClick: recordShot, disabled: mic !== 'idle' || !caps.asr || Live.isRunning() }, '录一段'),
         ),
@@ -3675,7 +3698,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.4.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.5.0'),
         ),
         h(
           'div',
