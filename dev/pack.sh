@@ -1,30 +1,65 @@
 #!/usr/bin/env bash
 # Build both release zips and refuse to publish anything personal.
 #
-#   ./dev/pack.sh            # 从 ../study-suite 构建到 ./packages
+#   ./dev/pack.sh            # 从 app/ 组装到 packages/
 #
+# 源码现在就在仓库里（app/），面板代码用仓库根的那份。
 # 构建完会跑 dev/check-privacy.py；发现课程代码、登录 token、家目录路径就中止。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-SRC="${STUDY_SUITE_DIST:-$REPO/../study-suite}"
+SRC="${STUDY_SUITE_DIST:-$REPO/app}"
 VERSION="${VERSION:-$(python3 -c "import json,sys;print(json.load(open('$REPO/package.json'))['version'])")}"
 OUT="$REPO/packages"
 
-[ -d "$SRC" ] || { echo "找不到源目录: $SRC（用 STUDY_SUITE_DIST 指定）"; exit 1; }
+[ -d "$SRC/service" ] || { echo "找不到源码目录: $SRC/service（用 STUDY_SUITE_DIST 指定）"; exit 1; }
 
 rm -rf "$OUT" && mkdir -p "$OUT"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# macOS + Windows 通用包（就是 study-suite 目录本身）
-(cd "$SRC/.." && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" "$(basename "$SRC")" -x "*.DS_Store")
+PKG="$TMP/study-suite"
+mkdir -p "$PKG/plugin"
 
-# Windows 专用包：把脚本摊到根目录
-mkdir -p "$TMP/win/study-suite"
-cp -R "$SRC/plugin" "$SRC/service" "$TMP/win/study-suite/"
-cp "$SRC"/{install.ps1,remind-windows.ps1,doctor.ps1,check-win.ps1,README.md,INSTALL.md,CHANGELOG.md} "$TMP/win/study-suite/"
+# 服务端与安装脚本
+cp -R "$SRC/service" "$PKG/"
+cp "$SRC"/{install.ps1,install.sh,doctor.ps1,doctor.command,check-win.ps1,remind-windows.ps1,start.command} "$PKG/"
+cp "$SRC"/{README.md,INSTALL.md,CHANGELOG.md} "$PKG/"
+
+# 面板：仓库根就是插件源码，包里需要的是「本地插件」形态的 package.json
+cp "$REPO"/{client.js,index.js,cordis.patch.yml,icon.svg} "$PKG/plugin/"
+cp -R "$REPO/locale" "$PKG/plugin/"
+python3 - "$REPO/package.json" "$PKG/plugin/package.json" "$PKG/plugin/cordis.patch.yml" <<'PY'
+import json
+import sys
+
+src, dst, patch_yml = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, encoding="utf-8") as fh:
+    meta = json.load(fh)
+meta["name"] = "@local/study-suite"
+meta["private"] = True
+for key in ("license", "author", "keywords", "repository", "bugs", "homepage", "publishConfig"):
+    meta.pop(key, None)
+with open(dst, "w", encoding="utf-8", newline="\n") as fh:
+    json.dump(meta, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+
+# 插件用本地包名，和 package.json 保持一致
+with open(patch_yml, encoding="utf-8") as fh:
+    text = fh.read()
+text = text.replace("'dsh-study-suite'", "'@local/study-suite'")
+with open(patch_yml, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write(text)
+PY
+
+# macOS + Windows 通用包
+(cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite -x "*.DS_Store")
+
+# Windows 专用包：去掉 macOS 专属入口
+mkdir -p "$TMP/win"
+cp -R "$PKG" "$TMP/win/study-suite"
+rm -f "$TMP/win/study-suite/install.sh" "$TMP/win/study-suite/doctor.command" "$TMP/win/study-suite/start.command"
 (cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$VERSION.zip" study-suite -x "*.DS_Store")
 
 echo "已构建:"
@@ -32,4 +67,5 @@ ls -lh "$OUT" | tail -2
 
 echo
 python3 "$HERE/check-privacy.py" "$OUT"/*.zip
-echo "隐私检查通过，可以发布。"
+python3 "$HERE/check-encoding.py" .
+echo "隐私检查、编码检查都通过，可以发布。"

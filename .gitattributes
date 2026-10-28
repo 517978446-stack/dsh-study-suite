@@ -10,3 +10,5 @@
 *.zip binary
 *.png binary
 *.onnx binary
+*.py text eol=lf
+*.json text eol=lf
