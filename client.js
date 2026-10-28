@@ -4,6 +4,73 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
 
+    // ---- 共享能力探测：三个面板共用一次 /health，失败即全部降级 ----
+    const Capabilities = (function () {
+      const ENDPOINT = 'http://127.0.0.1:8791';
+      const UNKNOWN = { llm: false, asr: false, imageOcr: false, pdfOcr: false, known: false };
+      const state = { caps: UNKNOWN, listeners: new Set(), inflight: null, raw: null, at: 0 };
+
+      function publish(next) {
+        state.caps = next;
+        state.listeners.forEach(function (fn) { fn(next); });
+      }
+
+      function parse(data) {
+        const c = (data && data.capabilities) || {};
+        return {
+          llm: c.llm !== false,
+          asr: c.asr !== false,
+          imageOcr: c.imageOcr !== false,
+          // pdfOcr 只影响扫描件；文字版 PDF 靠 pypdf 就能读，所以别把它理解成“PDF 不可用”
+          pdfOcr: c.pdfOcr !== false,
+          known: true,
+        };
+      }
+
+      function refresh(force) {
+        if (state.inflight) return state.inflight;
+        // 15 秒内复用上次结果：切标签时不会重复打 /health
+        if (!force && state.raw && Date.now() - state.at < 15000) {
+          return Promise.resolve(state.raw);
+        }
+        const controller = new AbortController();
+        const timer = setTimeout(function () { controller.abort(); }, 2500);
+        state.inflight = fetch(ENDPOINT + '/health', { cache: 'no-store', signal: controller.signal })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            state.raw = data;
+            state.at = Date.now();
+            publish(parse(data));
+            return data;
+          })
+          .catch(function () {
+            state.raw = null;
+            state.at = 0;
+            publish(UNKNOWN);
+            return null;
+          })
+          .finally(function () {
+            clearTimeout(timer);
+            state.inflight = null;
+          });
+        return state.inflight;
+      }
+
+      function useCapabilities() {
+        const [caps, setCaps] = React.useState(state.caps);
+        React.useEffect(function () {
+          function onUpdate(next) { setCaps(next); }
+          state.listeners.add(onUpdate);
+          setCaps(state.caps);
+          refresh();
+          return function () { state.listeners.delete(onUpdate); };
+        }, []);
+        return caps;
+      }
+
+      return { refresh: refresh, useCapabilities: useCapabilities };
+    })();
+
     // ---- 学习台模块（原 study-panel，作用域隔离避免与同传重名） ----
     const StudyModules = (function () {
 
@@ -1844,7 +1911,7 @@ window.__ModuleLoader__.load({
       const [tab, setTab] = React.useState('doc');
       const [to, setTo] = React.useState('zh');
       const [engine, setEngine] = React.useState('llm');
-      const [caps, setCaps] = React.useState({ llm: false, asr: false, imageOcr: false, pdfOcr: false, known: false });
+      const caps = Capabilities.useCapabilities();
       const [docText, setDocText] = React.useState('');
       const [docResult, setDocResult] = React.useState('');
       const [docPairs, setDocPairs] = React.useState([]);
@@ -1883,35 +1950,21 @@ window.__ModuleLoader__.load({
       React.useEffect(
         function () {
           let alive = true;
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 2500);
-          callEngine('/health', null, controller.signal)
+          Capabilities.refresh()
             .then((data) => {
               if (!alive) return;
+              if (!data) { setStatus('offline'); return; }
               setStatus('online');
-              setTermCount((data && data.glossary && data.glossary.en_zh) || 0);
-              const loaded = (data && data.idleUnload && data.idleUnload.loaded) || {};
+              setTermCount((data.glossary && data.glossary.en_zh) || 0);
+              const loaded = (data.idleUnload && data.idleUnload.loaded) || {};
               setMem({ llm: !!loaded.llm, asr: !!loaded.asr });
-              const capability = (data && data.capabilities) || {};
-              const next = {
-                llm: capability.llm !== false,
-                asr: capability.asr !== false,
-                imageOcr: capability.imageOcr !== false,
-                pdfOcr: capability.pdfOcr !== false,
-                known: true,
-              };
-              setCaps(next);
-              // known 之后才敢根据能力切引擎：初值全 false 时不能动用户选择
-              if (next.known && !next.llm) {
+              const capability = data.capabilities || {};
+              if (capability.llm === false) {
                 setEngine(function (current) { return current === 'llm' ? 'fast' : current; });
               }
-            })
-            .catch(() => alive && setStatus('offline'))
-            .finally(() => clearTimeout(timer));
+            });
           return function () {
             alive = false;
-            clearTimeout(timer);
-            controller.abort();
           };
         },
         [nonce],
@@ -2786,19 +2839,7 @@ window.__ModuleLoader__.load({
       }
 
       function DetectPanel() {
-        const [ocr, setOcr] = React.useState({ image: false, pdf: false, known: false });
-        React.useEffect(function () {
-          let alive = true;
-          fetch(ENGINE + '/health', { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-              if (!alive) return;
-              const c = (data && data.capabilities) || {};
-              setOcr({ image: c.imageOcr !== false, pdf: c.pdfOcr !== false, known: true });
-            })
-            .catch(function () { /* 离线时保持乐观 */ });
-          return function () { alive = false; };
-        }, []);
+        const caps = Capabilities.useCapabilities();
 
         const scheme = useAppColorScheme();
         const [text, setText] = React.useState('');
@@ -2914,7 +2955,8 @@ window.__ModuleLoader__.load({
                 h('input', {
                   ref: fileRef,
                   type: 'file',
-                  accept: ocr.image ? '.txt,.md,.docx,.pdf,image/*' : '.txt,.md,.docx,.pdf',
+                  // 文字版 PDF 在 Windows 也能读；pdfOcr 只影响扫描件，所以 .pdf 始终可选
+                  accept: caps.imageOcr ? '.txt,.md,.docx,.pdf,image/*' : '.txt,.md,.docx,.pdf',
                   onChange: function (event) {
                     const file = event.target.files && event.target.files[0];
                     setPickedFile(file ? file.name : '');
@@ -3153,7 +3195,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.6.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.7.0'),
         ),
         h(
           'div',
