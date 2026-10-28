@@ -557,11 +557,14 @@ window.__ModuleLoader__.load({
       const [expanded, setExpanded] = React.useState({});
       const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
       const [editingCourse, setEditingCourse] = React.useState({});
+      const caps = Capabilities.useCapabilities();
       const [readingJobs, setReadingJobs] = React.useState({});
       const [panelModal, setPanelModal] = React.useState(null);
       const [checkTarget, setCheckTarget] = React.useState('');
       const checkFileRef = React.useRef(null);
       const lastCheckFileRef = React.useRef(null);
+      const [cnTokenInput, setCnTokenInput] = React.useState('');
+      const [cnBusy, setCnBusy] = React.useState(false);
       const modalTokenRef = React.useRef(0);
 
       function closeModal() {
@@ -628,7 +631,26 @@ window.__ModuleLoader__.load({
           clearTimeout(timer);
           const data = await response.json();
           if (data.error && !(data.courses || []).length) throw new Error(data.error);
-          setDigest({ loading: false, courses: data.courses || [], fetchedAt: data.fetchedAt || '', error: '' });
+          const courses = data.courses || [];
+          setDigest({ loading: false, courses: courses, fetchedAt: data.fetchedAt || '', error: '' });
+          // CN 里读到的课程自动补进「我的课程」，用户不用手动一门门加
+          if (courses.length) {
+            setState(function (prev) {
+              const known = (prev.courses || []).map(function (item) { return item.name; });
+              const added = [];
+              courses.forEach(function (course) {
+                if (!course.name || known.indexOf(course.name) >= 0) return;
+                if (hiddenCourses.indexOf(course.name) >= 0) return;
+                added.push({
+                  id: 'cn-' + (course.number || course.name),
+                  name: course.name,
+                  url: course.url || '',
+                });
+              });
+              if (!added.length) return prev;
+              return Object.assign({}, prev, { courses: added.concat(prev.courses || []) });
+            });
+          }
         } catch (err) {
           setDigest({ loading: false, courses: [], fetchedAt: '', error: friendlyError(err) });
         }
@@ -1066,6 +1088,33 @@ window.__ModuleLoader__.load({
         ),
       );
 
+      async function submitCnToken() {
+        const token = cnTokenInput.trim();
+        if (!token) return;
+        setCnBusy(true);
+        try {
+          const response = await fetch(ENGINE + '/cn/token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ token: token }),
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || 'token 无效');
+          setCnLoggedAt(Date.now());
+          try { window.localStorage.setItem('dsh-study-cn-login', String(Date.now())); } catch (err) {}
+          setCnTokenInput('');
+          closeModal();
+          await refreshDigest();
+          await loadPlan();
+        } catch (err) {
+          setPanelModal(function (prev) {
+            return Object.assign({}, prev, { error: err.message || '登录失败' });
+          });
+        } finally {
+          setCnBusy(false);
+        }
+      }
+
       async function openBrief(item, path) {
         const token = ++modalTokenRef.current;
         setPanelModal({ type: 'brief', item: item, loading: true, data: null, error: '' });
@@ -1140,9 +1189,52 @@ window.__ModuleLoader__.load({
         if (panelModal.loading) {
           body.push(h('p', { key: 'l', style: { margin: 0, fontSize: 13, color: C.muted } },
             panelModal.type === 'brief' ? '正在读这份说明（首次约 10 秒）…' : '正在检查…'));
-        } else if (panelModal.error) {
+        } else if (panelModal.error && panelModal.type !== 'cnlogin') {
           body.push(h('p', { key: 'e', style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-state-error-primary)' } },
             panelModal.error));
+        } else if (panelModal.type === 'cnlogin') {
+          if (panelModal.error) {
+            body.push(h('p', { key: 'err', style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } },
+              panelModal.error));
+          }
+          body.push(h('p', { key: 's1', style: { margin: 0, fontSize: 13, lineHeight: 1.7 } },
+            '1. 在浏览器里登录 CN（还没登录的话点下面这个链接）'));
+          body.push(h('a', {
+            key: 'link',
+            href: 'https://www.thecn.com/',
+            target: '_blank',
+            rel: 'noreferrer',
+            style: { fontSize: 12, color: C.accent, alignSelf: 'flex-start' },
+          }, '打开 thecn.com（新标签页登录）'));
+          body.push(h('p', { key: 's2', style: { margin: 0, fontSize: 13, lineHeight: 1.7 } },
+            '2. 登录后按 F12 → Console，粘贴下面这行回车，token 会被复制'));
+          body.push(h('code', {
+            key: 'code',
+            style: {
+              fontSize: 12, padding: '8px 10px', borderRadius: 8,
+              background: 'var(--dsw-alias-bg-base, #f2f3f5)',
+              border: '1px solid ' + C.border, userSelect: 'all', wordBreak: 'break-all',
+            },
+          }, "copy(localStorage.getItem('cn_token'))"));
+          body.push(h('p', { key: 's3', style: { margin: 0, fontSize: 13, lineHeight: 1.7 } },
+            '3. 粘贴到下面，保存后课程 / 课表 / 作业会自动读取'));
+          body.push(h('input', {
+            key: 'token',
+            value: cnTokenInput,
+            onChange: (event) => setCnTokenInput(event.target.value.trim()),
+            placeholder: '粘贴 token（约 32 位字母数字）',
+            style: {
+              height: 32, padding: '0 10px', fontSize: 12, borderRadius: 8,
+              border: '1px solid ' + C.border, background: C.base, color: C.text, outline: 'none',
+            },
+          }));
+          body.push(h('button', {
+            key: 'save',
+            type: 'button',
+            disabled: cnBusy || !cnTokenInput.trim(),
+            onClick: submitCnToken,
+            style: Object.assign(pillStyle(true), { height: 30, alignSelf: 'flex-start', opacity: cnBusy || !cnTokenInput.trim() ? 0.6 : 1 }),
+          }, cnBusy ? '验证中…' : '保存并登录'));
         } else if (panelModal.type === 'brief') {
           body.push(h('div', { key: 'w', style: { fontSize: 13 } }, h('b', null, '字数要求：'), data['字数要求'] || '未说明'));
           body.push(h('div', { key: 'f', style: { fontSize: 13 } }, h('b', null, '提交格式：'), data['提交格式'] || '未说明'));
@@ -1263,7 +1355,11 @@ window.__ModuleLoader__.load({
           },
             h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
               h('span', { style: { fontSize: 15, fontWeight: 600 } },
-                panelModal.type === 'brief' ? '作业要点' : '提交前检查'),
+                panelModal.type === 'brief'
+                  ? '作业要点'
+                  : panelModal.type === 'cnlogin'
+                    ? '导入 CN 登录'
+                    : '提交前检查'),
               h('span', { style: { fontSize: 12, color: C.muted, flex: '1 1 auto' } },
                 (panelModal.item && panelModal.item.title) || ''),
               h('button', {
@@ -1328,25 +1424,20 @@ window.__ModuleLoader__.load({
                 : null,
             ),
             h(
-              'a',
+              'button',
               {
-                href: 'https://www.thecn.com/',
-                target: '_blank',
-                rel: 'noreferrer',
+                type: 'button',
                 onClick: function () {
-                  const now = Date.now();
-                  setCnLoggedAt(now);
-                  try {
-                    window.localStorage.setItem('dsh-study-cn-login', String(now));
-                  } catch (err) {
-                    /* 隐私模式忽略 */
-                  }
+                  setCnTokenInput('');
+                  modalTokenRef.current += 1;
+                  setPanelModal({ type: 'cnlogin', item: null, loading: false, data: null, error: '', idle: true });
                 },
                 title: cnLoggedAt
-                  ? '已登录 CN（浏览器 cookie 有效期内）。再点一次会重新打开 CN 页面'
-                  : 'CN 的登录是浏览器 cookie；在这里登录一次，此后课程可直接打开',
+                  ? '已登录 CN。点这里可以重新导入 token（失效时用）'
+                  : '导入 CN 登录：课程、课表、作业会自动读取',
                 style: Object.assign(pillStyle(false), {
                   height: 28,
+                  cursor: 'pointer',
                   color: cnLoggedAt ? C.accent : C.text,
                   borderColor: cnLoggedAt ? C.accent : C.border,
                 }),
@@ -4240,7 +4331,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.9.4'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.10.0'),
         ),
         h(
           'div',
