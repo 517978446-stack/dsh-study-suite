@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
     // ---- 共享能力探测：三个面板共用一次 /health，失败即全部降级 ----
     const Capabilities = (function () {
       const ENDPOINT = 'http://127.0.0.1:8791';
-      const UNKNOWN = { llm: false, asr: false, imageOcr: false, pdfOcr: false, known: false };
+      const UNKNOWN = { llm: false, asr: false, asrModelReady: false, imageOcr: false, pdfOcr: false, known: false, platform: '' };
       const state = { caps: UNKNOWN, listeners: new Set(), inflight: null, raw: null, at: 0 };
 
       function publish(next) {
@@ -20,6 +20,8 @@ window.__ModuleLoader__.load({
         return {
           llm: c.llm !== false,
           asr: c.asr !== false,
+          asrModelReady: c.asrModelReady !== false,
+          platform: (data && data.platform) || '',
           imageOcr: c.imageOcr !== false,
           // pdfOcr 只影响扫描件；文字版 PDF 靠 pypdf 就能读，所以别把它理解成“PDF 不可用”
           pdfOcr: c.pdfOcr !== false,
@@ -2700,7 +2702,10 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
-                onClick: () => setNonce((n) => n + 1),
+                onClick: () => {
+                  Capabilities.refresh(true);
+                  setNonce((n) => n + 1);
+                },
                 style: Object.assign(pillStyle(false), { height: 26 }),
               },
               '重试连接',
@@ -2730,7 +2735,10 @@ window.__ModuleLoader__.load({
                     fontSize: 12,
                   },
                 },
-                error + '（本地引擎没启动时，重启 DSH 会自动拉起）',
+                error +
+                  (caps.platform === 'windows'
+                    ? '（先运行 %USERPROFILE%\\.dsh-study-suite\\run-service.cmd，或重跑 install.ps1）'
+                    : '（macOS 可执行：launchctl kickstart -k gui/$(id -u)/com.local.cn-interpreter）'),
               )
             : null,
           tab === 'doc' ? docPane : tab === 'dialog' ? dialogPane : voicePane,
@@ -3201,7 +3209,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.8.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.8.1'),
         ),
         h(
           'div',
