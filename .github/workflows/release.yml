@@ -1,6 +1,7 @@
 name: release
 
-# 打 tag（v*）时自动建 Release，并把 packages/ 下的 zip 传成资产。
+# 打 tag（v*）时自动建 Release，只上传 macOS 安装包。
+# Windows 包由维护者在自己的环境构建并发布，本仓库的 Release 不包含它。
 # 这样下载计数、版本页这些元信息就有了，也不用本地 token。
 on:
   push:
@@ -25,11 +26,11 @@ jobs:
         run: |
           set -e
           VERSION="${VERSION#v}" ./dev/pack.sh
-          ls -lh packages/*.zip
-          test "$(ls packages/*.zip | wc -l)" -ge 2
+          ls -lh packages/*macos*.zip
+          test "$(ls packages/*macos*.zip | wc -l)" -ge 1
 
       - name: 发布前确认包内没有个人信息
-        run: python3 dev/check-privacy.py packages/*.zip
+        run: python3 dev/check-privacy.py packages/*macos*.zip
 
       - name: 建 Release 并上传资产
         env:
@@ -39,9 +40,9 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           # 已存在就补传（--clobber 覆盖同名资产），避免重复触发时失败
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" packages/*.zip --clobber
+            gh release upload "$TAG" packages/*macos*.zip --clobber
           else
-            gh release create "$TAG" packages/*.zip \
+            gh release create "$TAG" packages/*macos*.zip \
               --title "$TAG" \
               --generate-notes
           fi

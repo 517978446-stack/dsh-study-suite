@@ -69,6 +69,15 @@ PY
 (cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite \
   -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
+# 纯 macOS 包：只保留 mac 入口（Windows 包由维护者自行发布）
+mkdir -p "$TMP/mac"
+cp -R "$PKG" "$TMP/mac/study-suite"
+rm -f "$TMP/mac/study-suite/install.ps1" "$TMP/mac/study-suite/doctor.ps1" \
+      "$TMP/mac/study-suite/check-win.ps1" "$TMP/mac/study-suite/remind-windows.ps1" \
+      "$TMP/mac/study-suite/watchdog.ps1"
+(cd "$TMP/mac" && zip -qr "$OUT/study-suite-macos-$VERSION.zip" study-suite \
+  -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
+
 # Windows 专用包：去掉 macOS 专属入口
 mkdir -p "$TMP/win"
 cp -R "$PKG" "$TMP/win/study-suite"

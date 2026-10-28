@@ -29,8 +29,10 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| Windows | [study-suite-windows.zip](https://github.com/517978446-stack/dsh-study-suite/releases/latest) | 含 install.ps1、doctor.ps1、check-win.ps1 |
-| macOS + Windows | [study-suite-macos-win.zip](https://github.com/517978446-stack/dsh-study-suite/releases/latest) | 完整版，含启动脚本 |
+| macOS | [study-suite-macos.zip](https://github.com/517978446-stack/dsh-study-suite/releases/latest) | `install.sh` + 面板 + 服务，双击 `start.command` 启动 |
+| macOS（含 Windows 脚本） | [study-suite-macos-win.zip](https://github.com/517978446-stack/dsh-study-suite/releases/latest) | 同一份代码，额外带 `install.ps1` 等 Windows 入口 |
+
+> Windows 安装包由维护者在自己的环境构建发布，本仓库的 Release 只包含 macOS 包。
 
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
 
