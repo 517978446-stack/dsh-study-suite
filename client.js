@@ -2229,6 +2229,9 @@ window.__ModuleLoader__.load({
       const [docText, setDocText] = React.useState('');
       const [docResult, setDocResult] = React.useState('');
       const [docProgress, setDocProgress] = React.useState(null);   // {done,total}
+      const [docFile, setDocFile] = React.useState(null);           // {name,chars}
+      const [docFileBusy, setDocFileBusy] = React.useState(false);
+      const docFileRef = React.useRef(null);
       const [docPairs, setDocPairs] = React.useState([]);
       const [docMs, setDocMs] = React.useState(0);
       const [verify, setVerify] = React.useState(true);
@@ -2394,6 +2397,35 @@ window.__ModuleLoader__.load({
         });
         if (buffer.trim()) chunks.push(buffer);
         return chunks.filter(function (chunk) { return chunk.trim(); });
+      }
+
+      async function loadDocFile(file) {
+        if (!file) return;
+        setDocFileBusy(true);
+        setError('');
+        try {
+          const buffer = await file.arrayBuffer();
+          const response = await fetch(ENGINE + '/extract', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/octet-stream',
+              'x-filename': encodeURIComponent(file.name),
+            },
+            body: buffer,
+          });
+          const data = await response.json().catch(function () { return {}; });
+          if (!response.ok) throw new Error(data.error || '读不出文件内容');
+          setDocText(data.text || '');
+          setDocFile({ name: file.name, chars: data.chars || (data.text || '').length });
+          setDocResult('');
+          setDocPairs([]);
+          setSim(null);
+          setBack('');
+        } catch (err) {
+          setError(err.message || '读取失败');
+        } finally {
+          setDocFileBusy(false);
+        }
       }
 
       async function translateDoc() {
@@ -2690,10 +2722,44 @@ window.__ModuleLoader__.load({
 
       const docPane = h(
         Card,
-        { title: '文档 / 论文翻译', note: '断网可用 · 整段粘贴' },
+        { title: '文档 / 论文翻译', note: '断网可用 · 选文件或整段粘贴' },
+        h(
+          'div',
+          { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 } },
+          h('input', {
+            ref: docFileRef,
+            type: 'file',
+            accept: '.txt,.md,.docx,.pdf',
+            style: { display: 'none' },
+            onChange: function (event) {
+              const file = event.target.files && event.target.files[0];
+              loadDocFile(file);
+              event.target.value = '';
+            },
+          }),
+          h(
+            Button,
+            { onClick: () => docFileRef.current && docFileRef.current.click(), disabled: docFileBusy },
+            docFileBusy ? '读取中…' : '选择文件',
+          ),
+          h('span', { style: { fontSize: 11, color: C.muted } }, '支持 .docx / .pdf / .txt，也可直接拖进来'),
+          docFile
+            ? h(
+                'span',
+                { style: { fontSize: 11, color: C.ok } },
+                '✓ ' + docFile.name + ' · ' + docFile.chars + ' 字',
+              )
+            : null,
+        ),
         h('textarea', {
           value: docText,
           onChange: (event) => setDocText(event.target.value),
+          onDragOver: (event) => event.preventDefault(),
+          onDrop: (event) => {
+            event.preventDefault();
+            const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+            if (file) loadDocFile(file);
+          },
           placeholder: to === 'zh' ? '粘贴英文原文（讲义、论文、作业要求…）' : '粘贴中文原文',
           spellCheck: false,
           style: {
@@ -3754,7 +3820,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.5.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.6.0'),
         ),
         h(
           'div',
