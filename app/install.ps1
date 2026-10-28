@@ -8,7 +8,8 @@ param(
   [switch]$Full,
   [switch]$Uninstall,
   [switch]$Purge,
-  [switch]$NoReminders
+  [switch]$NoReminders,
+  [switch]$NoWatchdog
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,7 +58,12 @@ if ($Uninstall) {
     $path = Join-Path $Base $sub
     if (Test-Path $path) { Remove-Item $path -Recurse -Force }
   }
-  foreach ($file in @("serve_translate.py", "cn_api.py", "glossary.json", "remind.py", "timetable.json", "plan.json", "course-filters.json", "hidden-courses.json")) {
+  $watchdogTask = Get-ScheduledTask -TaskName "StudySuiteWatchdog" -ErrorAction SilentlyContinue
+  if ($watchdogTask) {
+    Unregister-ScheduledTask -TaskName "StudySuiteWatchdog" -Confirm:$false
+    Write-Host "已移除服务看门狗 StudySuiteWatchdog"
+  }
+  foreach ($file in @("serve_translate.py", "cn_api.py", "glossary.json", "remind.py", "watchdog.ps1", "timetable.json", "plan.json", "course-filters.json", "hidden-courses.json")) {
     $path = Join-Path $Base $file
     if (Test-Path $path) { Remove-Item $path -Force }
   }
@@ -75,7 +81,7 @@ if ($Uninstall) {
 }
 
 Write-Host "== 安装目录: $Base"
-foreach ($sub in @("secrets", "notes", "models", "pylibs")) {
+foreach ($sub in @("secrets", "notes", "models", "pylibs", "audio")) {
   New-Item -ItemType Directory -Force -Path (Join-Path $Base $sub) | Out-Null
 }
 Copy-Item (Join-Path $Here "service\serve_translate.py") $Base -Force
@@ -83,6 +89,11 @@ Copy-Item (Join-Path $Here "service\cn_api.py") $Base -Force
 Copy-Item (Join-Path $Here "service\glossary.json") $Base -Force
 Copy-Item (Join-Path $Here "service\smoke.py") $Base -Force
 Copy-Item (Join-Path $Here "service\remind.py") $Base -Force
+# Windows 没有 Swift，OCR 用 Python 桥接顶上（服务端会自动识别 .py）
+foreach ($ocrFile in @("ocr.py", "pdfocr.py")) {
+  $src = Join-Path $Here "service\$ocrFile"
+  if (Test-Path $src) { Copy-Item $src (Join-Path $Base "audio\$ocrFile") -Force }
+}
 
 # ---- 找 Python ----
 $Py = $null
@@ -131,6 +142,13 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "然后重跑本脚本。"
   exit 1
 }
+# ---- OCR 依赖（图片 / 扫描件 PDF）----
+Write-Host "== 安装 OCR 依赖"
+& $Py @PyArgs -m pip install --quiet --upgrade --target $Pylibs rapidocr_onnxruntime pymupdf wordninja
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "OCR 依赖安装失败：图片和扫描件识别不可用（翻译、检测不受影响）"
+}
+
 if ($Full) {
   Write-Host "== 安装语音依赖"
   & $Py @PyArgs -m pip install --quiet --upgrade --target $Pylibs faster-whisper
@@ -311,6 +329,20 @@ if (-not $NoReminders) {
   }
 }
 
+if (-not $NoWatchdog) {
+  $watchdogScript = Join-Path $Here "watchdog.ps1"
+  if (Test-Path $watchdogScript) {
+    Copy-Item $watchdogScript $Base -Force
+    try {
+      & powershell -ExecutionPolicy Bypass -File (Join-Path $Base "watchdog.ps1") -Install
+    } catch {
+      Write-Host "!! 看门狗没装上（不影响使用，但服务退出后要手动启动）：$($_.Exception.Message)"
+    }
+  }
+} else {
+  Write-Host "== 按 -NoWatchdog 跳过看门狗"
+}
+
 @"
 
 下一步（在 DeepSeek Harness 里）：
@@ -320,15 +352,20 @@ if (-not $NoReminders) {
 
 Windows 能用到什么：
   可用    翻译（快速引擎）、AI 率检测（文本/Word/文字版 PDF）、课程功能（需自己登录 CN）
+  可用    图片 / 扫描件 OCR（RapidOCR，纯本地）
   可用    语音转写：需要 -Full 安装，首次使用会下载约 500MB 模型
-  不可用  精准翻译 7B（仅 macOS/MLX）
-  不可用  图片与扫描件 OCR（依赖 macOS 的系统能力）
+  可选    精准翻译 7B：装 Ollama 后自动启用（ollama pull qwen2.5:7b-instruct-q4_K_M）
   不可用  说话人 A/B 分离（缺 sherpa-onnx 模型，Windows 未打包）
 
 提醒（截止前 3 天 / 1 天、逾期、上课前 30 分钟，推到手机 Bark）：
   已随安装注册计划任务 StudySuiteRemind（每 5 分钟）
   试跑： powershell -ExecutionPolicy Bypass -File remind-windows.ps1 -Test
   移除： powershell -ExecutionPolicy Bypass -File remind-windows.ps1 -Remove
+
+服务守护（退出后 1 分钟内自动拉起，对应 macOS 的 launchd KeepAlive）：
+  已注册计划任务 StudySuiteWatchdog（每 1 分钟探活）
+  想手动停服务前先暂停： powershell -ExecutionPolicy Bypass -File "$Base\watchdog.ps1" -Pause
+  恢复： powershell -ExecutionPolicy Bypass -File "$Base\watchdog.ps1" -Resume
 
 自检（装好后随时可以跑）：
   python "$Base\smoke.py"

@@ -1,5 +1,24 @@
 # 更新日志
 
+## 7.11.0 — 2026-10-29
+
+**Windows 补齐三块原本只有 macOS 才有的能力**
+
+- **图片 / 扫描件 OCR**：接入 RapidOCR（PaddleOCR 的 ONNX 版，模型约 15 MB，纯本地）。
+  Windows 没有 Swift，用 `service/ocr.py` 顶上；服务端 `_ocr_binary()` 找不到编译好的
+  可执行文件时会自动回退到同名 `.py`
+- **服务看门狗**：新增 `watchdog.ps1` + 计划任务 `StudySuiteWatchdog`，每 1 分钟探活，
+  服务退出后自动拉起（对应 macOS 的 `KeepAlive`）。`-Pause` / `-Resume` 可临时让出
+- **精准翻译 7B 支持本地 HTTP 推理**：`llm_translate()` 优先走 `CN_LLM_BASE`
+  （默认 `http://127.0.0.1:11434`，即 Ollama），装了 Ollama 就自动启用；
+  macOS 的 MLX 保留为兜底
+
+**顺带修的性能问题**
+
+- OCR 引擎在进程内缓存，不再每次请求重新加载 ONNX 模型（实测 4.5s → 1.6s）
+- 能力探测加 10 秒缓存：Ollama 缺席时 `/health` 不再阻塞 2 秒
+- 扫描件 PDF 走 PyMuPDF 渲染 + 同一套引擎，不再依赖外部 `pdfocr` 二进制
+
 ## 7.10.3 — 2026-10-29
 
 **只改开发工具，安装包内容与 7.10.2 一致**

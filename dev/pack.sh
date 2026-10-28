@@ -54,13 +54,13 @@ with open(patch_yml, "w", encoding="utf-8", newline="\n") as fh:
 PY
 
 # macOS + Windows 通用包
-(cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite -x "*.DS_Store")
+(cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
 # Windows 专用包：去掉 macOS 专属入口
 mkdir -p "$TMP/win"
 cp -R "$PKG" "$TMP/win/study-suite"
 rm -f "$TMP/win/study-suite/install.sh" "$TMP/win/study-suite/doctor.command" "$TMP/win/study-suite/start.command"
-(cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$VERSION.zip" study-suite -x "*.DS_Store")
+(cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$VERSION.zip" study-suite -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
 echo "已构建:"
 ls -lh "$OUT" | tail -2
