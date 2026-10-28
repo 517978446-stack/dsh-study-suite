@@ -12,11 +12,13 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FULL=0
 NO_REMIND=0
+FORCE_REMIND=0
 
 for arg in "$@"; do
   case "$arg" in
     --full) FULL=1 ;;
     --no-remind) NO_REMIND=1 ;;
+    --remind) FORCE_REMIND=1 ;;
     --uninstall)
       launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
       launchctl bootout "gui/$(id -u)/$LABEL.remind" 2>/dev/null || true
@@ -40,11 +42,19 @@ echo "== Python: $PY ($($PY -V 2>&1))"
 
 echo "== 安装 Python 依赖（可能需要几分钟）"
 "$PY" -m pip install --quiet --upgrade --target "$BASE/pylibs" \
-  ctranslate2 sentencepiece pypdf python-docx 2>&1 | tail -3 || true
+  ctranslate2 sentencepiece pypdf python-docx playwright 2>&1 | tail -3 || true
 
 if [ "$FULL" = "1" ]; then
   "$PY" -m pip install --quiet --upgrade --target "$BASE/pylibs" \
     faster-whisper sherpa-onnx mlx-lm 2>&1 | tail -3 || true
+fi
+
+echo "== 检查一键登录的浏览器（复用系统 Edge/Chrome，不下载内核）"
+for cand in "/Applications/Microsoft Edge.app" "/Applications/Google Chrome.app" "/Applications/Chromium.app"; do
+  if [ -d "$cand" ]; then echo "   找到: $cand"; FOUND_BROWSER=1; fi
+done
+if [ "${FOUND_BROWSER:-0}" != "1" ]; then
+  echo "   没找到 Edge/Chrome：一键登录会失败，可以在面板里手动粘贴 token"
 fi
 
 echo "== 下载翻译模型（约 164MB）"
@@ -148,7 +158,23 @@ else
 fi
 
 # ---- 提醒任务（每 5 分钟一次，对应 Windows 的计划任务 StudySuiteRemind）----
+# 和 Windows 一致：用户删过就一直关，升级不会自己回来
+PREF_FILE="$BASE/remind.json"
+PREF_ENABLED=""
+if [ -f "$PREF_FILE" ]; then
+  PREF_ENABLED=$(grep -o '"enabled"[[:space:]]*:[[:space:]]*false' "$PREF_FILE" >/dev/null 2>&1 && echo "false" || echo "true")
+fi
+if [ "$NO_REMIND" -eq 1 ]; then
+  printf '{"enabled": false}\n' > "$PREF_FILE"
+  echo "== 已记住：提醒关闭（重装也不会自动开；要恢复加 --remind）"
+  NO_REMIND=1
+elif [ "$PREF_ENABLED" = "false" ] && [ "$FORCE_REMIND" -eq 0 ]; then
+  echo "== 提醒之前被你关掉了（$PREF_FILE），这次跳过；要恢复加 --remind"
+  NO_REMIND=1
+fi
+
 if [ "$NO_REMIND" -eq 0 ]; then
+  printf '{"enabled": true}\n' > "$PREF_FILE"
   cat > "$BASE/remind.sh" <<RUNNER
 #!/bin/sh
 LOG="$BASE/remind.log"

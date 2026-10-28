@@ -831,10 +831,26 @@ def check_text(text, name, target_words=None, pattern=""):
 
 
 
-def cn_login_browser(timeout=300):
-    """弹出系统 Edge 让用户登录 CN，读 localStorage 里的 cn_token。
+_LOGIN_LOCK = threading.Lock()
 
-    用 playwright 的 channel="msedge" 复用系统浏览器，不下载 chromium。
+
+def _login_channels():
+    """按平台给出可用的浏览器 channel，装了什么就用什么。
+
+    macOS 上很多人只有 Chrome（没有 Edge），只认 msedge 会直接失败。
+    None 表示让 playwright 用自己的 chromium（需要 playwright install）。
+    """
+    if sys.platform == "darwin":
+        return ["msedge", "chrome", None]
+    if os.name == "nt":
+        return ["msedge", "chrome", None]
+    return ["chrome", "msedge", None]
+
+
+def cn_login_browser(timeout=300):
+    """弹出系统浏览器让用户登录 CN，读 localStorage 里的 cn_token。
+
+    优先复用系统浏览器（Edge/Chrome），不下载 chromium；都没有才退回 playwright 自带的。
     登录过程中页面会跳转（登录页 -> 首页），evaluate 会抛 "Execution context was destroyed"，
     这不是窗口关闭——所以要先判断浏览器连接是否还在，再决定继续还是退出。
     """
@@ -843,11 +859,27 @@ def cn_login_browser(timeout=300):
     except Exception as err:
         raise BadRequest("没有安装 playwright（%s）。可以手动粘贴 token，或 pip install playwright 后重试。" % err)
 
+    # 连点两次会弹两个窗口：同一时间只允许一次登录
+    if not _LOGIN_LOCK.acquire(blocking=False):
+        raise BadRequest("已经有一个登录窗口在等待，先完成或关闭它")
+
     token = ""
     closed = False
+    last_error = ""
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(channel="msedge", headless=False)
+            browser = None
+            for channel in _login_channels():
+                try:
+                    browser = pw.chromium.launch(channel=channel, headless=False) if channel \
+                        else pw.chromium.launch(headless=False)
+                    break
+                except Exception as err:
+                    last_error = str(err)
+                    continue
+            if browser is None:
+                raise BadRequest("找不到可用的浏览器（Edge/Chrome）。装一个，或手动粘贴 token。"
+                                 "最后错误：%s" % last_error)
             try:
                 context = browser.new_context()
                 page = context.new_page()
@@ -881,6 +913,8 @@ def cn_login_browser(timeout=300):
         raise
     except Exception as err:
         raise BadRequest("启动浏览器失败：%s" % err)
+    finally:
+        _LOGIN_LOCK.release()
 
     if not token:
         if closed:

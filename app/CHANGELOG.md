@@ -1,5 +1,18 @@
 # 更新日志
 
+## 7.13.0 — 2026-10-29
+
+**macOS 对齐 Windows 的新能力**
+- 安装脚本装 `playwright`，CN 一键登录在 macOS 可用（不下载浏览器内核，复用系统浏览器）
+- 一键登录的浏览器顺序改为 Edge → Chrome → Chromium（原来只认 Edge，Mac 上多数人只有 Chrome）
+- 连续点击「一键登录」只弹一个窗口（之前会弹两个）
+- 提醒开关在 macOS 也能记住：`--no-remind` 写入 `remind.json`，升级不再自动装回来；`--remind` 恢复
+
+**安全**
+- 本地服务只接受本机来源请求（`Origin` 必须是 127.0.0.1 / localhost），
+  任意网站不再能读取 `/plan`、`/digest`，也不能触发 `/cn/login`、`/digest/refresh`
+- 修复 README 里把 `127.0.0.1` 写成 `127.2.0.1` 的两处笔误
+
 ## 7.12.0 — 2026-10-29
 
 **CN 登录不再需要 F12**

@@ -33,7 +33,9 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Full
 
 ```bash
 ./install.sh          # 约 200MB：翻译 + 文本检测
-./install.sh --full   # 约 5GB：再加语音识别、说话人分离、7B 精准翻译
+./install.sh --full          # 约 5GB：再加语音识别、说话人分离、7B 精准翻译
+./install.sh --no-remind     # 不注册提醒任务，并记住这个选择（以后重装也不会自动开）
+./install.sh --remind        # 恢复提醒（之前用 --no-remind 关掉过的话）
 ```
 
 脚本会自动完成：建目录 → 装依赖 → 下模型 → 注册开机自启。
@@ -41,6 +43,14 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Full
 **装完先确认服务活着**：浏览器打开 <http://127.0.0.1:8791/health>，能看到一串 JSON 就对了。
 
 ---
+
+### macOS：CN 一键登录
+
+安装脚本会装好 `playwright`（不下载浏览器内核），登录时复用你系统里的
+Edge / Chrome / Chromium 弹一个窗口，你在里面登录完，token 自动保存。
+
+装完两个浏览器都没有的话，面板里仍可「手动粘贴 token」：
+打开 thecn.com 登录 → F12 → Console 执行 `copy(localStorage.getItem('cn_token'))` → 粘贴。
 
 ## 第 2 步：装面板
 
