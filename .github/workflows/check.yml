@@ -14,3 +14,6 @@ jobs:
           python-version: "3.12"
       - name: .ps1 必须有 BOM，.cmd/.vbs 必须是 CRLF
         run: python3 dev/check-encoding.py .
+
+      - name: 不能把个人路径 / 邮箱 / 课程代码带进仓库
+        run: python3 dev/check-privacy.py --generic-only .

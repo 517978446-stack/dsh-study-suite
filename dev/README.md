@@ -83,3 +83,29 @@ python3 "$HOME/.dsh-study-suite/smoke.py"
 1. `python3 dev/check-encoding.py .` —— `.ps1` 带 BOM、`.cmd/.vbs` 是 CRLF，并且扫描 `packages/*.zip`
 2. 推 tag 后看 Actions：`release` 成功即自动建 Release 并上传两个 zip
 
+
+## 打包与隐私检查
+
+```bash
+./dev/pack.sh          # 从 ../study-suite 构建两个 zip 到 packages/
+```
+
+`pack.sh` 最后会跑 `dev/check-privacy.py`，命中以下任一就**中止打包**：
+
+| 检查项 | 例子 |
+|---|---|
+| macOS / Windows 家目录路径 | `/Users/你的名字/…` |
+| 个人工作区目录名 | `学习区` |
+| 个人邮箱 | `@ucsiuniversity` / `@gmail` 等 |
+| 十位学号样式数字 | `1002580997` |
+| 你的 CN token 原值 | 从 `secrets/cn-state.json` 读 |
+| 你的课程代码 | 从 `plan.json` / `timetable.json` 读 |
+
+CI 里也会跑两次：`check.yml` 扫仓库源码（只用通用规则，CI 上没有你的本地文件），
+`release.yml` 扫 `packages/*.zip`（用通用规则，因为 runner 上没有你的数据）。
+
+手动检查任意包：
+
+```bash
+python3 dev/check-privacy.py packages/study-suite-windows-7.10.2.zip
+```
