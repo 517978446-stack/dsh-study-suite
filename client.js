@@ -519,6 +519,8 @@ window.__ModuleLoader__.load({
       const [filters, setFilters] = React.useState({});
       const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
       const [refreshing, setRefreshing] = React.useState(false);
+      const [hiddenCourses, setHiddenCourses] = React.useState([]);
+      const [showHidden, setShowHidden] = React.useState(false);
       const [cnLoggedAt, setCnLoggedAt] = React.useState(function () {
         try {
           const raw = window.localStorage.getItem('dsh-study-cn-login');
@@ -591,6 +593,10 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         loadDigest();
         loadPlan();
+        fetch(ENGINE + '/hidden', { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) { setHiddenCourses((data && data.names) || []); })
+          .catch(function () { setHiddenCourses([]); });
         fetch(ENGINE + '/filters', { cache: 'no-store' })
           .then(function (r) { return r.json(); })
           .then(function (data) { setFilters((data && data.filters) || {}); })
@@ -696,7 +702,10 @@ window.__ModuleLoader__.load({
         setRevealed(false);
       }
 
-      const courseRows = state.courses.map((item) => {
+      const visibleCourses = state.courses.filter(function (c) {
+        return showHidden || hiddenCourses.indexOf(c.name) === -1;
+      });
+      const courseRows = visibleCourses.map((item) => {
         const info = digest.courses.find(function (c) { return c.name === item.name; }) || null;
         const open = !!expanded[item.name];
         return h(
@@ -967,7 +976,7 @@ window.__ModuleLoader__.load({
             h(
               'span',
               { style: { fontSize: 12, color: C.muted, paddingBottom: 3 } },
-              state.courses.length +
+              visibleCourses.length +
                 ' 门课 · 已填链接 ' +
                 linked +
                 ' · ' +
@@ -1037,7 +1046,29 @@ window.__ModuleLoader__.load({
           ),
           h(
             Card,
-            { title: '我的课程', note: 'UCSI' + ' · 共 ' + state.courses.length + ' 门 · 点「打开」直达' },
+            {
+              title: '我的课程',
+              note: 'UCSI' + ' · 共 ' + visibleCourses.length + ' 门 · 点「打开」直达',
+              action: hiddenCourses.length
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      onClick: function () { setShowHidden(!showHidden); },
+                      style: {
+                        border: 'none',
+                        background: 'transparent',
+                        color: C.muted,
+                        cursor: 'pointer',
+                        fontSize: 11,
+                      },
+                    },
+                    showHidden
+                      ? '收起已隐藏的 ' + hiddenCourses.length + ' 门'
+                      : '已隐藏 ' + hiddenCourses.length + ' 门',
+                  )
+                : null,
+            },
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } }, courseRows),
             h(
               'div',
@@ -2978,7 +3009,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.7.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.8.0'),
         ),
         h(
           'div',
