@@ -3,8 +3,13 @@
 #
 #   ./dev/pack.sh            # 从 app/ 组装到 packages/
 #
-# 源码现在就在仓库里（app/），面板代码用仓库根的那份。
-# 构建完会跑 dev/check-privacy.py；发现课程代码、登录 token、家目录路径就中止。
+# 仓库布局：
+#   app/service/           共享核心（翻译、检测、CN 抓取、smoke）
+#   app/platform/windows/  只有 Windows 用（install.ps1、watchdog、OCR 桥接）
+#   app/platform/macos/    只有 macOS 用（install.sh、doctor.command、start.command）
+#   app/*.md               用户文档
+#
+# 构建完会跑 dev/check-privacy.py 和 dev/check-encoding.py；不通过就中止。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -20,14 +25,22 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PKG="$TMP/study-suite"
-mkdir -p "$PKG/plugin"
+mkdir -p "$PKG/plugin" "$PKG/service"
 
-# 服务端与安装脚本
-cp -R "$SRC/service" "$PKG/"
-cp "$SRC"/{install.ps1,install.sh,doctor.ps1,doctor.command,check-win.ps1,remind-windows.ps1,start.command} "$PKG/"
+# 共享核心
+cp -R "$SRC/service/." "$PKG/service/"
+
+# Windows：脚本摊到根，OCR 桥接跟 service 走（服务端从 service/ 取）
+cp "$SRC"/platform/windows/{install.ps1,doctor.ps1,check-win.ps1,remind-windows.ps1,watchdog.ps1} "$PKG/"
+cp "$SRC"/platform/windows/{ocr.py,pdfocr.py} "$PKG/service/"
+
+# macOS 入口
+cp "$SRC"/platform/macos/{install.sh,doctor.command,start.command} "$PKG/"
+
+# 用户文档
 cp "$SRC"/{README.md,INSTALL.md,CHANGELOG.md} "$PKG/"
 
-# 面板：仓库根就是插件源码，包里需要的是「本地插件」形态的 package.json
+# 面板：仓库根就是插件源码，包里需要「本地插件」形态的 package.json
 cp "$REPO"/{client.js,index.js,cordis.patch.yml,icon.svg} "$PKG/plugin/"
 cp -R "$REPO/locale" "$PKG/plugin/"
 python3 - "$REPO/package.json" "$PKG/plugin/package.json" "$PKG/plugin/cordis.patch.yml" <<'PY'
@@ -45,7 +58,6 @@ with open(dst, "w", encoding="utf-8", newline="\n") as fh:
     json.dump(meta, fh, ensure_ascii=False, indent=2)
     fh.write("\n")
 
-# 插件用本地包名，和 package.json 保持一致
 with open(patch_yml, encoding="utf-8") as fh:
     text = fh.read()
 text = text.replace("'dsh-study-suite'", "'@local/study-suite'")
@@ -54,13 +66,15 @@ with open(patch_yml, "w", encoding="utf-8", newline="\n") as fh:
 PY
 
 # macOS + Windows 通用包
-(cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
+(cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite \
+  -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
 # Windows 专用包：去掉 macOS 专属入口
 mkdir -p "$TMP/win"
 cp -R "$PKG" "$TMP/win/study-suite"
 rm -f "$TMP/win/study-suite/install.sh" "$TMP/win/study-suite/doctor.command" "$TMP/win/study-suite/start.command"
-(cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$VERSION.zip" study-suite -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
+(cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$VERSION.zip" study-suite \
+  -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
 echo "已构建:"
 ls -lh "$OUT" | tail -2
