@@ -557,6 +557,7 @@ window.__ModuleLoader__.load({
       const [expanded, setExpanded] = React.useState({});
       const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
       const [editingCourse, setEditingCourse] = React.useState({});
+      const [readingJobs, setReadingJobs] = React.useState({});
       const [showDone, setShowDone] = React.useState(false);
       const [filters, setFilters] = React.useState({});
       const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
@@ -1289,30 +1290,74 @@ window.__ModuleLoader__.load({
                                 const chips = [];
                                 if (readDoc) {
                                   chips.push(
-                                    h(
-                                      'a',
-                                      {
-                                        key: 'read',
-                                        href: ENGINE + '/reading?path=' + encodeURIComponent(readDoc.path),
-                                        target: '_blank',
-                                        rel: 'noreferrer',
-                                        title: '生成中英对照 PDF（原文 + 逐段 7B 翻译）；首次几十秒到两三分钟，有进度条，之后走缓存',
-                                        style: {
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          height: 22,
-                                          padding: '0 9px',
-                                          borderRadius: 11,
-                                          border: '1px solid ' + C.accent,
-                                          background: C.accent,
-                                          color: readableOn(C.accent),
-                                          fontSize: 11,
-                                          fontWeight: 600,
-                                          textDecoration: 'none',
+                                    (function () {
+                                      const job = readingJobs[item.id] || {};
+                                      const running = job.status === 'running';
+                                      const done = job.status === 'done';
+                                      return h(
+                                        'button',
+                                        {
+                                          key: 'read',
+                                          type: 'button',
+                                          onClick: function (event) {
+                                            event.stopPropagation();
+                                            if (!running) {
+                                              setReadingJobs(function (prev) {
+                                                var next = Object.assign({}, prev);
+                                                next[item.id] = { status: 'running', done: 0, total: 0 };
+                                                return next;
+                                              });
+                                              startReadingJob(
+                                                readDoc.path,
+                                                function (patch) {
+                                                  setReadingJobs(function (prev) {
+                                                    var next = Object.assign({}, prev);
+                                                    next[item.id] = patch;
+                                                    return next;
+                                                  });
+                                                },
+                                                function (url) {
+                                                  window.open(url, '_blank', 'noopener');
+                                                  setReadingJobs(function (prev) {
+                                                    var next = Object.assign({}, prev);
+                                                    next[item.id] = { status: 'done' };
+                                                    return next;
+                                                  });
+                                                  setTimeout(function () {
+                                                    setReadingJobs(function (prev) {
+                                                      var next = Object.assign({}, prev);
+                                                      delete next[item.id];
+                                                      return next;
+                                                    });
+                                                  }, 1500);
+                                                },
+                                              );
+                                            }
+                                          },
+                                          title: '生成中英对照 PDF（原文 + 逐段翻译），首次需要一点时间，进度会显示在这里',
+                                          style: {
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            height: 22,
+                                            padding: '0 9px',
+                                            borderRadius: 11,
+                                            border: '1px solid ' + C.accent,
+                                            background: running ? 'transparent' : C.accent,
+                                            color: running ? C.text : readableOn(C.accent),
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            cursor: running ? 'default' : 'pointer',
+                                          },
                                         },
-                                      },
-                                      '中英对照',
-                                    ),
+                                        running ? readingProgressBar(job.done, job.total, C.accent) : null,
+                                        running
+                                          ? '生成中 ' + (job.done || 0) + '/' + (job.total || '…')
+                                          : done
+                                            ? '已生成'
+                                            : '中英对照',
+                                      );
+                                    })(),
                                   );
                                 }
                                 if (sourceDoc) {
@@ -1591,6 +1636,79 @@ window.__ModuleLoader__.load({
     })();
 
     // ---- 同传模块（原 interpreter） ----
+
+    // ---- 中英对照 PDF：后台生成 + 进度（多个面板共用）----
+    function readingProgressBar(done, total, color) {
+      const pct = total ? Math.max(4, Math.min(100, Math.round((done / total) * 100))) : 6;
+      return h(
+        'span',
+        {
+          style: {
+            display: 'inline-block',
+            width: 54,
+            height: 4,
+            borderRadius: 2,
+            background: 'rgba(127,127,127,0.25)',
+            overflow: 'hidden',
+            verticalAlign: 'middle',
+          },
+        },
+        h('span', {
+          style: {
+            display: 'block',
+            width: pct + '%',
+            height: '100%',
+            background: color || 'currentColor',
+            transition: 'width 0.3s ease',
+          },
+        }),
+      );
+    }
+
+    async function startReadingJob(path, onProgress, onDone) {
+      const endpoint = 'http://127.0.0.1:8791';
+      let prepared;
+      try {
+        const response = await fetch(
+          endpoint + '/reading/prepare?path=' + encodeURIComponent(path),
+          { cache: 'no-store' },
+        );
+        prepared = await response.json();
+      } catch (err) {
+        onProgress({ status: 'error', error: '生成失败' });
+        return;
+      }
+      if (!prepared || prepared.error) {
+        onProgress({ status: 'error', error: (prepared && prepared.error) || '生成失败' });
+        return;
+      }
+      if (prepared.status === 'ready') {
+        onDone(endpoint + prepared.pdf);
+        return;
+      }
+      onProgress({ status: 'running', done: prepared.done || 0, total: prepared.total || 0 });
+      const tick = setInterval(async function () {
+        try {
+          const response = await fetch(
+            endpoint + '/reading/status?path=' + encodeURIComponent(path),
+            { cache: 'no-store' },
+          );
+          const data = await response.json();
+          if (data.status === 'ready') {
+            clearInterval(tick);
+            onDone(endpoint + prepared.pdf);
+          } else if (data.status === 'error') {
+            clearInterval(tick);
+            onProgress({ status: 'error', error: data.error || '生成失败' });
+          } else {
+            onProgress({ status: 'running', done: data.done || 0, total: data.total || 0 });
+          }
+        } catch (err) {
+          /* 网络抖动继续轮询 */
+        }
+      }, 900);
+    }
+
     // ---- 同传引擎：常驻模块级，切走面板也继续录音与识别 ----
     const Live = (function () {
       const TARGET_RATE = 16000;
@@ -2785,6 +2903,9 @@ window.__ModuleLoader__.load({
             busy
               ? (docProgress ? '翻译中… ' + docProgress.done + '/' + docProgress.total : '翻译中…')
               : '精翻'),
+          docProgress
+            ? readingProgressBar(docProgress.done, docProgress.total, C.accent)
+            : null,
           h(Button, { onClick: () => { setDocText(''); setDocResult(''); setDocPairs([]); setError(''); setSim(null); setBack(''); } }, '清空'),
           h('span', { title: '译完后自动回译成原文语言，与原文比对，给出一致度评分' },
             h(Checkbox, { checked: verify, onChange: setVerify, label: '复核' }),
@@ -3820,7 +3941,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.6.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.7.0'),
         ),
         h(
           'div',
