@@ -1,0 +1,1651 @@
+{
+  "_comment": "术语表：命中的词在翻译前被替换成占位符，译完再还原成指定译法，因此不会被模型乱翻。加词只需往对应方向追加 [原文, 译法]。",
+  "en_zh": [
+    [
+      "American Psychological Association",
+      "美国心理学会"
+    ],
+    [
+      "APA referencing",
+      "APA 引用格式"
+    ],
+    [
+      "APA style",
+      "APA 格式"
+    ],
+    [
+      "literature review",
+      "文献综述"
+    ],
+    [
+      "literature review section",
+      "文献综述部分"
+    ],
+    [
+      "methodology",
+      "研究方法"
+    ],
+    [
+      "paraphrasing",
+      "改写"
+    ],
+    [
+      "paraphrase",
+      "改写"
+    ],
+    [
+      "plagiarism",
+      "抄袭"
+    ],
+    [
+      "citation",
+      "引用"
+    ],
+    [
+      "citations",
+      "引用"
+    ],
+    [
+      "referencing",
+      "参考文献格式"
+    ],
+    [
+      "reference list",
+      "参考文献列表"
+    ],
+    [
+      "academic integrity",
+      "学术诚信"
+    ],
+    [
+      "assessment",
+      "考核"
+    ],
+    [
+      "assignments",
+      "作业"
+    ],
+    [
+      "rubric",
+      "评分标准"
+    ],
+    [
+      "learning outcomes",
+      "学习成果"
+    ],
+    [
+      "micro-credential",
+      "微证书"
+    ],
+    [
+      "extra-curricular",
+      "课外"
+    ],
+    [
+      "mass communication",
+      "大众传播"
+    ],
+    [
+      "visual communication",
+      "视觉传播"
+    ],
+    [
+      "public speaking",
+      "公共演讲"
+    ],
+    [
+      "effective writing",
+      "有效写作"
+    ],
+    [
+      "falsafah dan isu semasa",
+      "当代哲学与议题"
+    ],
+    [
+      "integriti dan anti-rasuah",
+      "诚信与反贪"
+    ],
+    [
+      "semester",
+      "学期"
+    ],
+    [
+      "lecture",
+      "讲座"
+    ],
+    [
+      "tutorial",
+      "辅导课"
+    ],
+    [
+      "deadline",
+      "截止日期"
+    ],
+    [
+      "submission",
+      "提交"
+    ],
+    [
+      "word count",
+      "字数"
+    ],
+    [
+      "abstract",
+      "摘要"
+    ],
+    [
+      "hypothesis",
+      "假设"
+    ],
+    [
+      "qualitative",
+      "定性"
+    ],
+    [
+      "quantitative",
+      "定量"
+    ],
+    [
+      "questionnaire",
+      "问卷"
+    ],
+    [
+      "sample size",
+      "样本量"
+    ],
+    [
+      "data analysis",
+      "数据分析"
+    ],
+    [
+      "conclusion",
+      "结论"
+    ],
+    [
+      "introduction",
+      "引言"
+    ],
+    [
+      "discussion",
+      "讨论"
+    ],
+    [
+      "appendix",
+      "附录"
+    ],
+    [
+      "turnitin",
+      "查重系统"
+    ],
+    [
+      "similarity index",
+      "重复率"
+    ],
+    [
+      "cohesion",
+      "连贯"
+    ],
+    [
+      "coherence",
+      "一致性"
+    ],
+    [
+      "summarising",
+      "总结"
+    ],
+    [
+      "synthesising",
+      "综合"
+    ],
+    [
+      "source information",
+      "来源信息"
+    ],
+    [
+      "citing sources",
+      "引用来源"
+    ],
+    [
+      "ethical use of ai",
+      "AI伦理使用"
+    ],
+    [
+      "discussion of findings",
+      "结果讨论"
+    ],
+    [
+      "compiling final report",
+      "编撰最终报告"
+    ],
+    [
+      "philosophy",
+      "哲学"
+    ],
+    [
+      "midterm assessment",
+      "期中评估"
+    ],
+    [
+      "decolonization",
+      "去殖民化"
+    ],
+    [
+      "epistemology",
+      "认识论"
+    ],
+    [
+      "methaphysics",
+      "本体论"
+    ],
+    [
+      "ideology",
+      "意识形态"
+    ],
+    [
+      "assessment evaluation",
+      "评估评价"
+    ],
+    [
+      "activities and quizzes",
+      "活动和测验"
+    ],
+    [
+      "complete",
+      "完成"
+    ],
+    [
+      "mark",
+      "分数"
+    ],
+    [
+      "reminder",
+      "提醒"
+    ],
+    [
+      "student",
+      "学生"
+    ],
+    [
+      "complete and submit",
+      "完成并提交"
+    ],
+    [
+      "fail to complete",
+      "未能完成"
+    ],
+    [
+      "receive",
+      "获得"
+    ],
+    [
+      "midterm",
+      "期中"
+    ],
+    [
+      "anti-corruption",
+      "反腐败"
+    ],
+    [
+      "assignment guidelines and rubric",
+      "作业指南和评分标准"
+    ],
+    [
+      "blended learning",
+      "混合学习"
+    ],
+    [
+      "attendance",
+      "考勤"
+    ],
+    [
+      "thursday class",
+      "星期四课程"
+    ],
+    [
+      "class timetable clashes",
+      "课程时间冲突"
+    ],
+    [
+      "change class group",
+      "更改班级"
+    ],
+    [
+      "email",
+      "邮件"
+    ],
+    [
+      "personal contact",
+      "个人联系"
+    ],
+    [
+      "instructor",
+      "讲师"
+    ],
+    [
+      "students",
+      "学生"
+    ],
+    [
+      "instructed activity",
+      "指定活动"
+    ],
+    [
+      "blended learning exercise",
+      "混合学习练习"
+    ],
+    [
+      "extra-curricular learning experience 1",
+      "课外学习体验 1"
+    ],
+    [
+      "media",
+      "媒体"
+    ],
+    [
+      "technological development",
+      "技术发展"
+    ],
+    [
+      "social media",
+      "社交媒体"
+    ],
+    [
+      "newspapers",
+      "报纸"
+    ],
+    [
+      "magazines",
+      "杂志"
+    ],
+    [
+      "media history",
+      "媒体历史"
+    ],
+    [
+      "internet",
+      "互联网"
+    ],
+    [
+      "group project",
+      "小组项目"
+    ],
+    [
+      "presentation",
+      "展示"
+    ],
+    [
+      "literacy",
+      "识字"
+    ],
+    [
+      "assignment and rubrics",
+      "作业和评分标准"
+    ],
+    [
+      "understanding mobile phone cameras",
+      "理解手机摄像头"
+    ],
+    [
+      "forms submission",
+      "表单提交"
+    ],
+    [
+      "activity",
+      "活动"
+    ],
+    [
+      "post",
+      "帖子"
+    ],
+    [
+      "event",
+      "事件"
+    ],
+    [
+      "date",
+      "日期"
+    ],
+    [
+      "interactive",
+      "互动"
+    ],
+    [
+      "campaign",
+      "活动"
+    ],
+    [
+      "organic likes",
+      "有机点赞"
+    ],
+    [
+      "script",
+      "脚本"
+    ],
+    [
+      "storyboard",
+      "故事板"
+    ],
+    [
+      "pitch deck",
+      "演示文稿"
+    ],
+    [
+      "ethics",
+      "伦理"
+    ],
+    [
+      "assignment",
+      "作业"
+    ],
+    [
+      "audience",
+      "受众"
+    ],
+    [
+      "quiz",
+      "测验"
+    ],
+    [
+      "personal",
+      "个人"
+    ],
+    [
+      "deciding on a topic",
+      "选定主题"
+    ],
+    [
+      "academic report",
+      "学术报告"
+    ],
+    [
+      "writing",
+      "写作"
+    ],
+    [
+      "pitching video project",
+      "演示视频项目"
+    ],
+    [
+      "submit",
+      "提交"
+    ],
+    [
+      "group evaluation",
+      "小组评估"
+    ],
+    [
+      "individual evaluation",
+      "个人评估"
+    ],
+    [
+      "recorded video presentation",
+      "录制的视频演示"
+    ],
+    [
+      "group assignment",
+      "小组作业"
+    ],
+    [
+      "group assignment registration link",
+      "小组作业注册链接"
+    ],
+    [
+      "group project and presentation",
+      "小组项目和展示"
+    ],
+    [
+      "immersive reader",
+      "沉浸式阅读器"
+    ],
+    [
+      "calendar",
+      "日历"
+    ],
+    [
+      "individual assignment",
+      "个人作业"
+    ],
+    [
+      "impressive reader",
+      "沉浸式阅读"
+    ],
+    [
+      "public awareness",
+      "公众意识"
+    ],
+    [
+      "interview",
+      "访谈"
+    ],
+    [
+      "academic writing",
+      "学术写作"
+    ],
+    [
+      "thesis statement",
+      "论点句"
+    ],
+    [
+      "topic sentence",
+      "主题句"
+    ],
+    [
+      "summarise",
+      "概括"
+    ],
+    [
+      "synthesise",
+      "综合"
+    ],
+    [
+      "argument",
+      "论证"
+    ],
+    [
+      "evidence",
+      "证据"
+    ],
+    [
+      "counter-argument",
+      "反方论证"
+    ],
+    [
+      "critical analysis",
+      "批判性分析"
+    ],
+    [
+      "draft",
+      "初稿"
+    ],
+    [
+      "revision",
+      "修订"
+    ],
+    [
+      "proofreading",
+      "校读"
+    ],
+    [
+      "in-text citation",
+      "文中引用"
+    ],
+    [
+      "direct quotation",
+      "直接引用"
+    ],
+    [
+      "secondary source",
+      "二手资料"
+    ],
+    [
+      "primary source",
+      "一手资料"
+    ],
+    [
+      "peer review",
+      "同行评议"
+    ],
+    [
+      "word limit",
+      "字数上限"
+    ],
+    [
+      "self-plagiarism",
+      "自我抄袭"
+    ],
+    [
+      "similarity report",
+      "查重报告"
+    ],
+    [
+      "research question",
+      "研究问题"
+    ],
+    [
+      "literature gap",
+      "研究空白"
+    ],
+    [
+      "theoretical framework",
+      "理论框架"
+    ],
+    [
+      "sampling",
+      "抽样"
+    ],
+    [
+      "variable",
+      "变量"
+    ],
+    [
+      "validity",
+      "效度"
+    ],
+    [
+      "reliability",
+      "信度"
+    ],
+    [
+      "correlation",
+      "相关性"
+    ],
+    [
+      "statistical significance",
+      "统计显著性"
+    ],
+    [
+      "ethical approval",
+      "伦理审查"
+    ],
+    [
+      "formative assessment",
+      "形成性考核"
+    ],
+    [
+      "summative assessment",
+      "终结性考核"
+    ],
+    [
+      "peer assessment",
+      "同伴互评"
+    ],
+    [
+      "attendance requirement",
+      "出勤要求"
+    ],
+    [
+      "coursework",
+      "课程作业"
+    ],
+    [
+      "final examination",
+      "期末考试"
+    ],
+    [
+      "learning objective",
+      "学习目标"
+    ],
+    [
+      "course outline",
+      "课程大纲"
+    ],
+    [
+      "syllabus",
+      "教学纲要"
+    ],
+    [
+      "mass media",
+      "大众媒体"
+    ],
+    [
+      "audience analysis",
+      "受众分析"
+    ],
+    [
+      "gatekeeping",
+      "把关人"
+    ],
+    [
+      "media literacy",
+      "媒介素养"
+    ],
+    [
+      "propaganda",
+      "宣传"
+    ],
+    [
+      "framing",
+      "框架理论"
+    ],
+    [
+      "agenda setting",
+      "议程设置"
+    ],
+    [
+      "broadcast",
+      "广播"
+    ],
+    [
+      "circulation",
+      "发行量"
+    ],
+    [
+      "visual rhetoric",
+      "视觉修辞"
+    ],
+    [
+      "composition",
+      "构图"
+    ],
+    [
+      "colour palette",
+      "配色方案"
+    ],
+    [
+      "typography",
+      "字体排印"
+    ],
+    [
+      "brand identity",
+      "品牌识别"
+    ],
+    [
+      "mood board",
+      "情绪板"
+    ],
+    [
+      "target audience",
+      "目标受众"
+    ],
+    [
+      "call to action",
+      "行动号召"
+    ],
+    [
+      "exposure",
+      "曝光"
+    ],
+    [
+      "aperture",
+      "光圈"
+    ],
+    [
+      "shutter speed",
+      "快门速度"
+    ],
+    [
+      "ISO",
+      "感光度"
+    ],
+    [
+      "depth of field",
+      "景深"
+    ],
+    [
+      "white balance",
+      "白平衡"
+    ],
+    [
+      "rule of thirds",
+      "三分法构图"
+    ],
+    [
+      "raw file",
+      "RAW 原始文件"
+    ],
+    [
+      "post-processing",
+      "后期处理"
+    ],
+    [
+      "delivery",
+      "表达呈现"
+    ],
+    [
+      "body language",
+      "肢体语言"
+    ],
+    [
+      "vocal projection",
+      "发声投射"
+    ],
+    [
+      "impromptu speech",
+      "即兴演讲"
+    ],
+    [
+      "persuasive speech",
+      "说服性演讲"
+    ],
+    [
+      "speech outline",
+      "演讲提纲"
+    ],
+    [
+      "rhetorical question",
+      "反问"
+    ],
+    [
+      "ontology",
+      "本体论"
+    ],
+    [
+      "moral reasoning",
+      "道德推理"
+    ],
+    [
+      "utilitarianism",
+      "功利主义"
+    ],
+    [
+      "deontology",
+      "义务论"
+    ],
+    [
+      "social contract",
+      "社会契约"
+    ],
+    [
+      "corruption",
+      "贪污"
+    ],
+    [
+      "bribery",
+      "贿赂"
+    ],
+    [
+      "whistleblowing",
+      "举报"
+    ],
+    [
+      "conflict of interest",
+      "利益冲突"
+    ],
+    [
+      "code of conduct",
+      "行为准则"
+    ],
+    [
+      "accountability",
+      "问责"
+    ],
+    [
+      "transparency",
+      "透明度"
+    ],
+    [
+      "governance",
+      "治理"
+    ]
+  ],
+  "zh_en": [
+    [
+      "文献综述",
+      "literature review"
+    ],
+    [
+      "研究方法",
+      "methodology"
+    ],
+    [
+      "改写",
+      "paraphrasing"
+    ],
+    [
+      "抄袭",
+      "plagiarism"
+    ],
+    [
+      "引用",
+      "citation"
+    ],
+    [
+      "参考文献",
+      "references"
+    ],
+    [
+      "学术诚信",
+      "academic integrity"
+    ],
+    [
+      "考核",
+      "assessment"
+    ],
+    [
+      "作业",
+      "assignment"
+    ],
+    [
+      "评分标准",
+      "rubric"
+    ],
+    [
+      "学习成果",
+      "learning outcomes"
+    ],
+    [
+      "微证书",
+      "micro-credential"
+    ],
+    [
+      "课外",
+      "extra-curricular"
+    ],
+    [
+      "大众传播",
+      "mass communication"
+    ],
+    [
+      "视觉传播",
+      "visual communication"
+    ],
+    [
+      "公共演讲",
+      "public speaking"
+    ],
+    [
+      "有效写作",
+      "effective writing"
+    ],
+    [
+      "学期",
+      "semester"
+    ],
+    [
+      "截止日期",
+      "deadline"
+    ],
+    [
+      "提交",
+      "submission"
+    ],
+    [
+      "字数",
+      "word count"
+    ],
+    [
+      "摘要",
+      "abstract"
+    ],
+    [
+      "假设",
+      "hypothesis"
+    ],
+    [
+      "定性",
+      "qualitative"
+    ],
+    [
+      "定量",
+      "quantitative"
+    ],
+    [
+      "问卷",
+      "questionnaire"
+    ],
+    [
+      "样本量",
+      "sample size"
+    ],
+    [
+      "数据分析",
+      "data analysis"
+    ],
+    [
+      "结论",
+      "conclusion"
+    ],
+    [
+      "引言",
+      "introduction"
+    ],
+    [
+      "讨论",
+      "discussion"
+    ],
+    [
+      "附录",
+      "appendix"
+    ],
+    [
+      "查重系统",
+      "Turnitin"
+    ],
+    [
+      "重复率",
+      "similarity index"
+    ],
+    [
+      "连贯",
+      "cohesion"
+    ],
+    [
+      "一致性",
+      "coherence"
+    ],
+    [
+      "总结",
+      "summarising"
+    ],
+    [
+      "综合",
+      "synthesising"
+    ],
+    [
+      "来源信息",
+      "source information"
+    ],
+    [
+      "引用来源",
+      "citing sources"
+    ],
+    [
+      "AI伦理使用",
+      "ethical use of ai"
+    ],
+    [
+      "结果讨论",
+      "discussion of findings"
+    ],
+    [
+      "编撰最终报告",
+      "compiling final report"
+    ],
+    [
+      "哲学",
+      "philosophy"
+    ],
+    [
+      "期中评估",
+      "midterm assessment"
+    ],
+    [
+      "去殖民化",
+      "decolonization"
+    ],
+    [
+      "认识论",
+      "epistemology"
+    ],
+    [
+      "本体论",
+      "methaphysics"
+    ],
+    [
+      "意识形态",
+      "ideology"
+    ],
+    [
+      "评估评价",
+      "assessment evaluation"
+    ],
+    [
+      "活动和测验",
+      "activities and quizzes"
+    ],
+    [
+      "完成",
+      "complete"
+    ],
+    [
+      "分数",
+      "mark"
+    ],
+    [
+      "提醒",
+      "reminder"
+    ],
+    [
+      "学生",
+      "student"
+    ],
+    [
+      "完成并提交",
+      "complete and submit"
+    ],
+    [
+      "未能完成",
+      "fail to complete"
+    ],
+    [
+      "获得",
+      "receive"
+    ],
+    [
+      "期中",
+      "midterm"
+    ],
+    [
+      "反腐败",
+      "anti-corruption"
+    ],
+    [
+      "作业指南和评分标准",
+      "assignment guidelines and rubric"
+    ],
+    [
+      "混合学习",
+      "blended learning"
+    ],
+    [
+      "考勤",
+      "attendance"
+    ],
+    [
+      "星期四课程",
+      "thursday class"
+    ],
+    [
+      "课程时间冲突",
+      "class timetable clashes"
+    ],
+    [
+      "更改班级",
+      "change class group"
+    ],
+    [
+      "邮件",
+      "email"
+    ],
+    [
+      "个人联系",
+      "personal contact"
+    ],
+    [
+      "讲师",
+      "instructor"
+    ],
+    [
+      "指定活动",
+      "instructed activity"
+    ],
+    [
+      "混合学习练习",
+      "blended learning exercise"
+    ],
+    [
+      "课外学习体验 1",
+      "extra-curricular learning experience 1"
+    ],
+    [
+      "媒体",
+      "media"
+    ],
+    [
+      "技术发展",
+      "technological development"
+    ],
+    [
+      "社交媒体",
+      "social media"
+    ],
+    [
+      "报纸",
+      "newspapers"
+    ],
+    [
+      "杂志",
+      "magazines"
+    ],
+    [
+      "媒体历史",
+      "media history"
+    ],
+    [
+      "互联网",
+      "internet"
+    ],
+    [
+      "小组项目",
+      "group project"
+    ],
+    [
+      "展示",
+      "presentation"
+    ],
+    [
+      "识字",
+      "literacy"
+    ],
+    [
+      "作业和评分标准",
+      "assignment and rubrics"
+    ],
+    [
+      "理解手机摄像头",
+      "understanding mobile phone cameras"
+    ],
+    [
+      "表单提交",
+      "forms submission"
+    ],
+    [
+      "活动",
+      "activity"
+    ],
+    [
+      "帖子",
+      "post"
+    ],
+    [
+      "事件",
+      "event"
+    ],
+    [
+      "日期",
+      "date"
+    ],
+    [
+      "互动",
+      "interactive"
+    ],
+    [
+      "有机点赞",
+      "organic likes"
+    ],
+    [
+      "脚本",
+      "script"
+    ],
+    [
+      "故事板",
+      "storyboard"
+    ],
+    [
+      "演示文稿",
+      "pitch deck"
+    ],
+    [
+      "伦理",
+      "ethics"
+    ],
+    [
+      "受众",
+      "audience"
+    ],
+    [
+      "测验",
+      "quiz"
+    ],
+    [
+      "个人",
+      "personal"
+    ],
+    [
+      "选定主题",
+      "deciding on a topic"
+    ],
+    [
+      "学术报告",
+      "academic report"
+    ],
+    [
+      "写作",
+      "writing"
+    ],
+    [
+      "演示视频项目",
+      "pitching video project"
+    ],
+    [
+      "小组评估",
+      "group evaluation"
+    ],
+    [
+      "个人评估",
+      "individual evaluation"
+    ],
+    [
+      "录制的视频演示",
+      "recorded video presentation"
+    ],
+    [
+      "小组作业",
+      "group assignment"
+    ],
+    [
+      "小组作业注册链接",
+      "group assignment registration link"
+    ],
+    [
+      "小组项目和展示",
+      "group project and presentation"
+    ],
+    [
+      "沉浸式阅读器",
+      "immersive reader"
+    ],
+    [
+      "日历",
+      "calendar"
+    ],
+    [
+      "个人作业",
+      "individual assignment"
+    ],
+    [
+      "沉浸式阅读",
+      "impressive reader"
+    ],
+    [
+      "公众意识",
+      "public awareness"
+    ],
+    [
+      "访谈",
+      "interview"
+    ],
+    [
+      "学术写作",
+      "academic writing"
+    ],
+    [
+      "论点句",
+      "thesis statement"
+    ],
+    [
+      "主题句",
+      "topic sentence"
+    ],
+    [
+      "概括",
+      "summarise"
+    ],
+    [
+      "论证",
+      "argument"
+    ],
+    [
+      "证据",
+      "evidence"
+    ],
+    [
+      "反方论证",
+      "counter-argument"
+    ],
+    [
+      "批判性分析",
+      "critical analysis"
+    ],
+    [
+      "初稿",
+      "draft"
+    ],
+    [
+      "修订",
+      "revision"
+    ],
+    [
+      "校读",
+      "proofreading"
+    ],
+    [
+      "文中引用",
+      "in-text citation"
+    ],
+    [
+      "直接引用",
+      "direct quotation"
+    ],
+    [
+      "二手资料",
+      "secondary source"
+    ],
+    [
+      "一手资料",
+      "primary source"
+    ],
+    [
+      "同行评议",
+      "peer review"
+    ],
+    [
+      "字数上限",
+      "word limit"
+    ],
+    [
+      "自我抄袭",
+      "self-plagiarism"
+    ],
+    [
+      "查重报告",
+      "similarity report"
+    ],
+    [
+      "研究问题",
+      "research question"
+    ],
+    [
+      "研究空白",
+      "literature gap"
+    ],
+    [
+      "理论框架",
+      "theoretical framework"
+    ],
+    [
+      "抽样",
+      "sampling"
+    ],
+    [
+      "变量",
+      "variable"
+    ],
+    [
+      "效度",
+      "validity"
+    ],
+    [
+      "信度",
+      "reliability"
+    ],
+    [
+      "相关性",
+      "correlation"
+    ],
+    [
+      "统计显著性",
+      "statistical significance"
+    ],
+    [
+      "伦理审查",
+      "ethical approval"
+    ],
+    [
+      "形成性考核",
+      "formative assessment"
+    ],
+    [
+      "终结性考核",
+      "summative assessment"
+    ],
+    [
+      "同伴互评",
+      "peer assessment"
+    ],
+    [
+      "出勤要求",
+      "attendance requirement"
+    ],
+    [
+      "课程作业",
+      "coursework"
+    ],
+    [
+      "期末考试",
+      "final examination"
+    ],
+    [
+      "学习目标",
+      "learning objective"
+    ],
+    [
+      "课程大纲",
+      "course outline"
+    ],
+    [
+      "教学纲要",
+      "syllabus"
+    ],
+    [
+      "大众媒体",
+      "mass media"
+    ],
+    [
+      "受众分析",
+      "audience analysis"
+    ],
+    [
+      "把关人",
+      "gatekeeping"
+    ],
+    [
+      "媒介素养",
+      "media literacy"
+    ],
+    [
+      "宣传",
+      "propaganda"
+    ],
+    [
+      "框架理论",
+      "framing"
+    ],
+    [
+      "议程设置",
+      "agenda setting"
+    ],
+    [
+      "广播",
+      "broadcast"
+    ],
+    [
+      "发行量",
+      "circulation"
+    ],
+    [
+      "视觉修辞",
+      "visual rhetoric"
+    ],
+    [
+      "构图",
+      "composition"
+    ],
+    [
+      "配色方案",
+      "colour palette"
+    ],
+    [
+      "字体排印",
+      "typography"
+    ],
+    [
+      "品牌识别",
+      "brand identity"
+    ],
+    [
+      "情绪板",
+      "mood board"
+    ],
+    [
+      "目标受众",
+      "target audience"
+    ],
+    [
+      "行动号召",
+      "call to action"
+    ],
+    [
+      "曝光",
+      "exposure"
+    ],
+    [
+      "光圈",
+      "aperture"
+    ],
+    [
+      "快门速度",
+      "shutter speed"
+    ],
+    [
+      "感光度",
+      "ISO"
+    ],
+    [
+      "景深",
+      "depth of field"
+    ],
+    [
+      "白平衡",
+      "white balance"
+    ],
+    [
+      "三分法构图",
+      "rule of thirds"
+    ],
+    [
+      "RAW 原始文件",
+      "raw file"
+    ],
+    [
+      "后期处理",
+      "post-processing"
+    ],
+    [
+      "表达呈现",
+      "delivery"
+    ],
+    [
+      "肢体语言",
+      "body language"
+    ],
+    [
+      "发声投射",
+      "vocal projection"
+    ],
+    [
+      "即兴演讲",
+      "impromptu speech"
+    ],
+    [
+      "说服性演讲",
+      "persuasive speech"
+    ],
+    [
+      "演讲提纲",
+      "speech outline"
+    ],
+    [
+      "反问",
+      "rhetorical question"
+    ],
+    [
+      "道德推理",
+      "moral reasoning"
+    ],
+    [
+      "功利主义",
+      "utilitarianism"
+    ],
+    [
+      "义务论",
+      "deontology"
+    ],
+    [
+      "社会契约",
+      "social contract"
+    ],
+    [
+      "贪污",
+      "corruption"
+    ],
+    [
+      "贿赂",
+      "bribery"
+    ],
+    [
+      "举报",
+      "whistleblowing"
+    ],
+    [
+      "利益冲突",
+      "conflict of interest"
+    ],
+    [
+      "行为准则",
+      "code of conduct"
+    ],
+    [
+      "问责",
+      "accountability"
+    ],
+    [
+      "透明度",
+      "transparency"
+    ],
+    [
+      "治理",
+      "governance"
+    ]
+  ]
+}
