@@ -399,6 +399,115 @@ window.__ModuleLoader__.load({
         props.label ? h('span', null, props.label) : null,
       );
     }
+    function TimetablePanel() {
+      const scheme = useColorScheme();
+      const [timetable, setTimetable] = React.useState({ classes: [], loading: true, error: '' });
+
+      async function loadTimetable() {
+        try {
+          const response = await fetch(ENGINE + '/timetable', { cache: 'no-store' });
+          const data = await response.json();
+          setTimetable({ classes: data.classes || [], loading: false, error: '' });
+        } catch (err) {
+          setTimetable({ classes: [], loading: false, error: '读不到课表' });
+        }
+      }
+
+      React.useEffect(function () {
+        loadTimetable();
+      }, []);
+
+      return h(
+        'div',
+        {
+          style: {
+            height: '100%',
+            overflowY: 'auto',
+            background: C.base,
+            color: C.text,
+            colorScheme: scheme,
+            padding: '20px 28px 40px',
+          },
+        },
+        h(
+          'div',
+          { style: { maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 } },
+          h(
+            Card,
+            {
+              title: '本周课表',
+              note: (function () {
+                if (timetable.loading) return '读取中…';
+                const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
+                const list = timetable.classes.filter(function (c) { return c.day === today; });
+                const now = new Date().toTimeString().slice(0, 5);
+                const next = list.filter(function (c) { return c.start >= now; })[0];
+                if (!list.length) return '今天没课';
+                return '今天 ' + list.length + ' 节' + (next ? ' · 下一节 ' + next.start + ' ' + next.course : ' · 今天已上完');
+              })(),
+              action: h(Button, { onClick: loadTimetable }, '刷新'),
+            },
+            timetable.error
+              ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, timetable.error)
+              : h(
+                  'div',
+                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  [1, 2, 3, 4, 5, 6, 7].map(function (day) {
+                    const list = timetable.classes
+                      .filter(function (c) { return c.day === day; })
+                      .sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+                    if (!list.length) return null;
+                    const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
+                    const isToday = day === today;
+                    const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+                    return h(
+                      'div',
+                      {
+                        key: day,
+                        style: {
+                          display: 'flex',
+                          gap: 10,
+                          alignItems: 'flex-start',
+                          padding: '7px 10px',
+                          borderRadius: 8,
+                          border: '1px solid ' + (isToday ? 'var(--dsw-alias-brand-primary)' : C.border),
+                          background: C.base,
+                        },
+                      },
+                      h(
+                        'span',
+                        {
+                          style: {
+                            flex: '0 0 42px',
+                            fontSize: 12,
+                            fontWeight: isToday ? 700 : 500,
+                            color: isToday ? C.text : C.muted,
+                          },
+                        },
+                        names[day],
+                      ),
+                      h(
+                        'div',
+                        { style: { display: 'flex', flexDirection: 'column', gap: 3, flex: '1 1 auto', minWidth: 0 } },
+                        list.map(function (c, index) {
+                          return h(
+                            'div',
+                            { key: index, style: { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
+                            h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, c.start + '–' + c.end),
+                            h('span', { style: { fontSize: 13, fontWeight: 600 } }, c.course),
+                            h('span', { style: { fontSize: 12, color: C.muted } }, c.kind),
+                            h('span', { style: { fontSize: 12, color: C.muted } }, '· ' + c.room),
+                          );
+                        }),
+                      ),
+                    );
+                  }),
+                ),
+          ),
+        ),
+      );
+    }
+
     function StudyPanel() {
       const scheme = useColorScheme();
       const [state, setState] = React.useState(load);
@@ -407,7 +516,6 @@ window.__ModuleLoader__.load({
       const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
       const [editingCourse, setEditingCourse] = React.useState({});
       const [showDone, setShowDone] = React.useState(false);
-      const [timetable, setTimetable] = React.useState({ classes: [], loading: true, error: '' });
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
       const [frontDraft, setFrontDraft] = React.useState('');
@@ -470,18 +578,7 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         loadDigest();
         loadPlan();
-        loadTimetable();
       }, []);
-
-      async function loadTimetable() {
-        try {
-          const response = await fetch(ENGINE + '/timetable', { cache: 'no-store' });
-          const data = await response.json();
-          setTimetable({ classes: data.classes || [], loading: false, error: '' });
-        } catch (err) {
-          setTimetable({ classes: [], loading: false, error: '读不到课表' });
-        }
-      }
 
       async function loadPlan() {
         try {
@@ -578,99 +675,182 @@ window.__ModuleLoader__.load({
         setRevealed(false);
       }
 
-      const courseRows = state.courses.map((item) =>
-        h(
+      const courseRows = state.courses.map((item) => {
+        const info = digest.courses.find(function (c) { return c.name === item.name; }) || null;
+        const open = !!expanded[item.name];
+        return h(
           'div',
           {
             key: item.id,
             style: {
               display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '6px 8px',
+              flexDirection: 'column',
               borderRadius: 8,
               border: '1px solid ' + C.border,
               background: C.base,
             },
           },
           h(
-            'span',
-            {
-              title: item.name,
-              style: {
-                flex: '1 1 auto',
-                minWidth: 0,
-                fontSize: 13,
-                color: C.text,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px' } },
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: function () { toggleCourse(item.name); },
+                disabled: !info,
+                title: info ? '展开章节与公告' : '还没有抓到这门课的内容',
+                style: {
+                  border: 'none',
+                  background: 'transparent',
+                  color: info ? C.muted : 'transparent',
+                  cursor: info ? 'pointer' : 'default',
+                  fontSize: 11,
+                  padding: 0,
+                  width: 12,
+                  flex: '0 0 auto',
+                },
               },
-            },
-            item.name,
+              open ? '▾' : '▸',
+            ),
+            h(
+              'span',
+              {
+                title: item.name,
+                style: {
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  fontSize: 13,
+                  color: C.text,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                },
+              },
+              item.name,
+            ),
+            info
+              ? h(
+                  'span',
+                  { style: { fontSize: 11, color: C.muted, flex: '0 0 auto' } },
+                  (info.sections || []).length + ' 章 · ' + (info.page_count || 0) + ' 页' +
+                    (info.announcements ? ' · ' + info.announcements + ' 公告' : ''),
+                )
+              : null,
+            editingCourse[item.id]
+              ? h(Field, {
+                  value: item.url,
+                  placeholder: '粘贴这门课的网址',
+                  onChange: (value) => updateCourse(item.id, { url: value }),
+                  style: { flex: '0 0 190px', height: 26, fontSize: 12 },
+                })
+              : null,
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: () =>
+                  setEditingCourse(function (prev) {
+                    var next = Object.assign({}, prev);
+                    next[item.id] = !next[item.id];
+                    return next;
+                  }),
+                title: '修改这门课的网址',
+                style: {
+                  border: 'none',
+                  background: 'transparent',
+                  color: C.muted,
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: '0 4px',
+                  flex: '0 0 auto',
+                },
+              },
+              '✎',
+            ),
+            h(
+              'a',
+              {
+                href: item.url || state.listUrl,
+                target: '_blank',
+                rel: 'noreferrer',
+                style: Object.assign(pillStyle(!!item.url), { height: 26 }),
+              },
+              item.url ? '打开' : '去课程页',
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: () => removeCourse(item.id),
+                title: '从清单里移除',
+                style: {
+                  border: 'none',
+                  background: 'transparent',
+                  color: C.muted,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  lineHeight: 1,
+                  padding: 2,
+                  flex: '0 0 auto',
+                },
+              },
+              '×',
+            ),
           ),
-          editingCourse[item.id]
-            ? h(Field, {
-                value: item.url,
-                placeholder: '粘贴这门课的网址',
-                onChange: (value) => updateCourse(item.id, { url: value }),
-                style: { flex: '0 0 200px', height: 26, fontSize: 12 },
-              })
+          open && info
+            ? h(
+                'div',
+                {
+                  style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    padding: '4px 12px 10px 28px',
+                    borderTop: '1px solid ' + C.border,
+                    maxHeight: 320,
+                    overflowY: 'auto',
+                  },
+                },
+                (info.sections || []).length === 0
+                  ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有可见的章节内容。')
+                  : (info.sections || []).map(function (section, index) {
+                      return h(
+                        'div',
+                        { key: index, style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+                        h('span', { style: { fontSize: 12, fontWeight: 600 } }, section.title || '(未命名章节)'),
+                        (section.pages || []).slice(0, 8).map(function (page, pageIndex) {
+                          const mark = annotatePage(page);
+                          return h(
+                            'span',
+                            {
+                              key: pageIndex,
+                              style: {
+                                fontSize: 12,
+                                color: C.muted,
+                                paddingLeft: 10,
+                                opacity: mark.past ? 0.55 : 1,
+                              },
+                            },
+                            '· ' + page + mark.suffix + (mark.past ? '（已过）' : ''),
+                          );
+                        }),
+                      );
+                    }),
+                h(
+                  'a',
+                  {
+                    href: item.url || state.listUrl,
+                    target: '_blank',
+                    rel: 'noreferrer',
+                    style: { fontSize: 11, color: C.muted, textDecoration: 'none' },
+                  },
+                  '在 CN 里打开这门课 →',
+                ),
+              )
             : null,
-          h(
-            'button',
-            {
-              type: 'button',
-              onClick: () =>
-                setEditingCourse(function (prev) {
-                  var next = Object.assign({}, prev);
-                  next[item.id] = !next[item.id];
-                  return next;
-                }),
-              title: '修改这门课的网址',
-              style: {
-                border: 'none',
-                background: 'transparent',
-                color: C.muted,
-                cursor: 'pointer',
-                fontSize: 12,
-                padding: '0 4px',
-                flex: '0 0 auto',
-              },
-            },
-            '✎',
-          ),
-          h(
-            'a',
-            {
-              href: item.url || state.listUrl,
-              target: '_blank',
-              rel: 'noreferrer',
-              style: Object.assign(pillStyle(!!item.url), { height: 26 }),
-            },
-            item.url ? '打开' : '去课程页',
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              onClick: () => removeCourse(item.id),
-              title: '从清单里移除',
-              style: {
-                border: 'none',
-                background: 'transparent',
-                color: C.muted,
-                cursor: 'pointer',
-                fontSize: 14,
-                lineHeight: 1,
-                padding: 2,
-                flex: '0 0 auto',
-              },
-            },
-            '×',
-          ),
-        ),
-      );
+        );
+      });
 
       const quickLinks = state.links.map((item) =>
         h(
@@ -746,78 +926,6 @@ window.__ModuleLoader__.load({
           ),
           h(
             Card,
-            {
-              title: '本周课表',
-              note: (function () {
-                if (timetable.loading) return '读取中…';
-                const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
-                const list = timetable.classes.filter(function (c) { return c.day === today; });
-                const now = new Date().toTimeString().slice(0, 5);
-                const next = list.filter(function (c) { return c.start >= now; })[0];
-                if (!list.length) return '今天没课';
-                return '今天 ' + list.length + ' 节' + (next ? ' · 下一节 ' + next.start + ' ' + next.course : ' · 今天已上完');
-              })(),
-              action: h(Button, { onClick: loadTimetable }, '刷新'),
-            },
-            timetable.error
-              ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, timetable.error)
-              : h(
-                  'div',
-                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-                  [1, 2, 3, 4, 5, 6, 7].map(function (day) {
-                    const list = timetable.classes
-                      .filter(function (c) { return c.day === day; })
-                      .sort(function (a, b) { return a.start < b.start ? -1 : 1; });
-                    if (!list.length) return null;
-                    const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
-                    const isToday = day === today;
-                    const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-                    return h(
-                      'div',
-                      {
-                        key: day,
-                        style: {
-                          display: 'flex',
-                          gap: 10,
-                          alignItems: 'flex-start',
-                          padding: '7px 10px',
-                          borderRadius: 8,
-                          border: '1px solid ' + (isToday ? 'var(--dsw-alias-brand-primary)' : C.border),
-                          background: C.base,
-                        },
-                      },
-                      h(
-                        'span',
-                        {
-                          style: {
-                            flex: '0 0 42px',
-                            fontSize: 12,
-                            fontWeight: isToday ? 700 : 500,
-                            color: isToday ? C.text : C.muted,
-                          },
-                        },
-                        names[day],
-                      ),
-                      h(
-                        'div',
-                        { style: { display: 'flex', flexDirection: 'column', gap: 3, flex: '1 1 auto', minWidth: 0 } },
-                        list.map(function (c, index) {
-                          return h(
-                            'div',
-                            { key: index, style: { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
-                            h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, c.start + '–' + c.end),
-                            h('span', { style: { fontSize: 13, fontWeight: 600 } }, c.course),
-                            h('span', { style: { fontSize: 12, color: C.muted } }, c.kind),
-                            h('span', { style: { fontSize: 12, color: C.muted } }, '· ' + c.room),
-                          );
-                        }),
-                      ),
-                    );
-                  }),
-                ),
-          ),
-          h(
-            Card,
             { title: '我的课程', note: 'UCSI' + ' · 共 ' + state.courses.length + ' 门 · 点「打开」直达' },
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } }, courseRows),
             h(
@@ -834,131 +942,6 @@ window.__ModuleLoader__.load({
               h(Button, { onClick: addCourse, disabled: !newCourse.trim() }, '添加'),
             ),
             h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, quickLinks),
-          ),
-          h(
-            Card,
-            {
-              title: '课程动态',
-              note: digest.loading
-                ? '读取中…'
-                : digest.fetchedAt
-                  ? '更新于 ' + digest.fetchedAt.replace('T', ' ').slice(5, 16)
-                  : '还没抓取过',
-              action: h(
-                Button,
-                { onClick: refreshDigest, disabled: digest.loading },
-                digest.loading ? '抓取中…' : '刷新',
-              ),
-            },
-            digest.error
-              ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, digest.error)
-              : null,
-            digest.courses.length === 0 && !digest.loading && !digest.error
-              ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, '点「刷新」拉取一次课程数据。')
-              : h(
-                  'div',
-                  {
-                    style: {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 6,
-                      maxHeight: 280,
-                      overflowY: 'auto',
-                    },
-                  },
-                  digest.courses.map(function (course) {
-                    const open = !!expanded[course.name];
-                    return h(
-                      'div',
-                      {
-                        key: course.name,
-                        style: {
-                          border: '1px solid ' + C.border,
-                          borderRadius: 8,
-                          background: C.base,
-                          overflow: 'hidden',
-                        },
-                      },
-                      h(
-                        'button',
-                        {
-                          type: 'button',
-                          onClick: function () {
-                            toggleCourse(course.name);
-                          },
-                          style: {
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            padding: '7px 10px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: C.text,
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            fontSize: 13,
-                          },
-                        },
-                        h('span', { style: { color: C.muted, fontSize: 11 } }, open ? '▾' : '▸'),
-                        h(
-                          'span',
-                          {
-                            style: {
-                              flex: '1 1 auto',
-                              minWidth: 0,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            },
-                          },
-                          course.name,
-                        ),
-                        h(
-                          'span',
-                          { style: { fontSize: 11, color: C.muted, flex: '0 0 auto' } },
-                          (course.sections || []).length + ' 章节 · ' + (course.page_count || 0) + ' 页面' +
-                            (course.announcements ? ' · ' + course.announcements + ' 公告' : ''),
-                        ),
-                      ),
-                      open
-                        ? h(
-                            'div',
-                            { style: { padding: '2px 12px 10px 28px', display: 'flex', flexDirection: 'column', gap: 6 } },
-                            course.error
-                              ? h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, course.error)
-                              : null,
-                            (course.sections || []).map(function (section, index) {
-                              return h(
-                                'div',
-                                { key: index, style: { display: 'flex', flexDirection: 'column', gap: 2 } },
-                                h('span', { style: { fontSize: 12, fontWeight: 600 } }, section.title || '(未命名章节)'),
-                                (section.pages || []).slice(0, 8).map(function (page, pageIndex) {
-                                  const mark = annotatePage(page);
-                                  return h(
-                                    'span',
-                                    {
-                                      key: pageIndex,
-                                      style: {
-                                        fontSize: 12,
-                                        color: C.muted,
-                                        paddingLeft: 10,
-                                        opacity: mark.past ? 0.55 : 1,
-                                      },
-                                    },
-                                    '· ' + page + mark.suffix + (mark.past ? '（已过）' : ''),
-                                  );
-                                }),
-                              );
-                            }),
-                            !(course.sections || []).length && !course.error
-                              ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有可见的章节内容。')
-                              : null,
-                          )
-                        : null,
-                    );
-                  }),
-                ),
           ),
           h(
             Card,
@@ -1310,7 +1293,7 @@ window.__ModuleLoader__.load({
     }
 
 
-      return { Panel: StudyPanel, Icon: StudyIcon };
+      return { Panel: StudyPanel, Icon: StudyIcon, Timetable: TimetablePanel };
     })();
 
     // ---- 同传模块（原 interpreter） ----
@@ -2828,19 +2811,22 @@ window.__ModuleLoader__.load({
             },
           },
           h('button', { type: 'button', onClick: () => setTab('study'), style: pill(tab === 'study') }, '课程'),
+          h('button', { type: 'button', onClick: () => setTab('tt'), style: pill(tab === 'tt') }, '课表'),
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v4.2.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.0.0'),
         ),
         h(
           'div',
           { style: { flex: '1 1 auto', minHeight: 0, overflow: 'hidden' } },
           tab === 'study'
             ? h(StudyModules.Panel)
-            : tab === 'interp'
-              ? h(InterpreterModules.Panel)
-              : h(DetectModules.Panel),
+            : tab === 'tt'
+              ? h(StudyModules.Timetable)
+              : tab === 'interp'
+                ? h(InterpreterModules.Panel)
+                : h(DetectModules.Panel),
         ),
       );
     }
