@@ -991,29 +991,33 @@ window.__ModuleLoader__.load({
                           ? h(
                               'div',
                               { style: { display: 'flex', gap: 6, paddingTop: 2, flexWrap: 'wrap' } },
-                              item.doc
-                                ? h(
-                                    'a',
-                                    {
-                                      href: ENGINE + '/file?path=' + encodeURIComponent(item.doc),
-                                      target: '_blank',
-                                      rel: 'noreferrer',
-                                      title: item.doc,
-                                      style: {
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        height: 22,
-                                        padding: '0 8px',
-                                        borderRadius: 11,
-                                        border: '1px solid ' + C.border,
-                                        color: C.text,
-                                        fontSize: 11,
-                                        textDecoration: 'none',
-                                      },
+                              (item.docs && item.docs.length
+                                ? item.docs
+                                : (item.doc ? [{ lang: 'en', path: item.doc }] : [])
+                              ).map(function (entry, docIndex) {
+                                return h(
+                                  'a',
+                                  {
+                                    key: docIndex,
+                                    href: ENGINE + '/file?path=' + encodeURIComponent(entry.path),
+                                    target: '_blank',
+                                    rel: 'noreferrer',
+                                    title: entry.path,
+                                    style: {
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      height: 22,
+                                      padding: '0 8px',
+                                      borderRadius: 11,
+                                      border: '1px solid ' + C.border,
+                                      color: C.text,
+                                      fontSize: 11,
+                                      textDecoration: 'none',
                                     },
-                                    '查看作业说明',
-                                  )
-                                : null,
+                                  },
+                                  entry.lang === 'zh' ? '中文版' : '英文版',
+                                );
+                              }),
                               item.url
                                 ? h(
                                     'a',
@@ -2779,7 +2783,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v4.1.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v4.2.0'),
         ),
         h(
           'div',
