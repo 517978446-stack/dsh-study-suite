@@ -25,6 +25,15 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 安全限制：`/file` 只接受来自 `127.0.0.1` 的请求，且只允许家目录下的文档类型。
 
+## 下载安装包
+
+| 平台 | 文件 | 说明 |
+|---|---|---|
+| Windows | [study-suite-windows-6.1.0.zip](packages/study-suite-windows-6.1.0.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
+| macOS + Windows + 手机 | [study-suite-6.1.0-macos-win-mobile.zip](packages/study-suite-6.1.0-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
+
+下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
+
 ## 界面结构
 
 四个标签：**课程 / 课表 / 翻译 / 检测**。
