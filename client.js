@@ -561,6 +561,7 @@ window.__ModuleLoader__.load({
       const [panelModal, setPanelModal] = React.useState(null);
       const [checkTarget, setCheckTarget] = React.useState('');
       const checkFileRef = React.useRef(null);
+      const lastCheckFileRef = React.useRef(null);
       const modalTokenRef = React.useRef(0);
 
       function closeModal() {
@@ -1085,6 +1086,7 @@ window.__ModuleLoader__.load({
       }
 
       async function checkFile(file) {
+        lastCheckFileRef.current = file || null;
         const token = ++modalTokenRef.current;
         const currentItem = panelModal && panelModal.item;
         setPanelModal({ type: 'check', item: currentItem, loading: true, data: null, error: '' });
@@ -1112,6 +1114,7 @@ window.__ModuleLoader__.load({
       }
 
       async function openCheck(item, path, target) {
+        lastCheckFileRef.current = null;   // 改用附件时，别让「重新检查」又跑回上次上传的文件
         const token = ++modalTokenRef.current;
         setPanelModal({ type: 'check', item: item, loading: true, data: null, error: '' });
         try {
@@ -1215,9 +1218,13 @@ window.__ModuleLoader__.load({
             h('button', {
               type: 'button',
               onClick: function () {
-                const item = panelModal.item || {};
-                const doc = item.doc || (item.docs && item.docs[0] && item.docs[0].path) || '';
-                openCheck(item, doc, checkTarget);
+                if (lastCheckFileRef.current) {
+                  checkFile(lastCheckFileRef.current);
+                } else {
+                  const item = panelModal.item || {};
+                  const doc = item.doc || (item.docs && item.docs[0] && item.docs[0].path) || '';
+                  openCheck(item, doc, checkTarget);
+                }
               },
               style: Object.assign(pillStyle(false), { height: 26, fontSize: 11 }),
             }, '重新检查')));
@@ -1583,11 +1590,15 @@ window.__ModuleLoader__.load({
                                       {
                                         key: 'brief',
                                         type: 'button',
+                                        disabled: !caps.llm,
                                         onClick: function (event) {
                                           event.stopPropagation();
+                                          if (!caps.llm) return;
                                           openBrief(item, readDoc.path);
                                         },
-                                        title: '用本地 7B 把这份英文说明提炼成中文要点（首次约 10 秒，之后走缓存）',
+                                        title: caps.llm
+                                          ? '用本地 7B 把这份英文说明提炼成中文要点（首次约 10 秒，之后走缓存）'
+                                          : '要点需要本机 7B 模型，目前仅 macOS 可用；Windows 可用「中英对照」看原文与译文',
                                         style: {
                                           display: 'inline-flex',
                                           alignItems: 'center',
@@ -1596,9 +1607,10 @@ window.__ModuleLoader__.load({
                                           borderRadius: 11,
                                           border: '1px solid ' + C.border,
                                           background: 'transparent',
-                                          color: C.text,
+                                          color: caps.llm ? C.text : C.muted,
                                           fontSize: 11,
-                                          cursor: 'pointer',
+                                          cursor: caps.llm ? 'pointer' : 'not-allowed',
+                                          opacity: caps.llm ? 1 : 0.5,
                                         },
                                       },
                                       '要点',
@@ -1615,6 +1627,7 @@ window.__ModuleLoader__.load({
                                           setCheckTarget('');
                                           // 不自动检查作业说明，先让用户选自己的成稿
                                           modalTokenRef.current += 1;
+                                          lastCheckFileRef.current = null;
                                           setPanelModal({ type: 'check', item: item, loading: false, data: null, error: '', idle: true });
                                         },
                                         title: '提交前自查：字数、引用、参考文献、文件名、AI 风险',
@@ -4227,7 +4240,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.9.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.9.1'),
         ),
         h(
           'div',
