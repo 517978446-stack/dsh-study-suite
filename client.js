@@ -1201,8 +1201,11 @@ window.__ModuleLoader__.load({
         }
         return h('div', {
           style: {
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            position: 'fixed', inset: 0,
+            // 完全不透明的背景板：不用 rgba，避免还能看见后面的文字
+            background: '#0e1014',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+            padding: 16,
           },
           onClick: () => setPanelModal(null),
         },
@@ -1210,9 +1213,12 @@ window.__ModuleLoader__.load({
             onClick: (event) => event.stopPropagation(),
             style: {
               width: 'min(560px, 92vw)', maxHeight: '80vh', overflow: 'auto',
-              background: C.layer, color: C.text, border: '1px solid ' + C.border,
+              // 卡片必须是实色：C.layer 不存在会让整个面板透明
+              background: 'var(--dsw-alias-bg-layer-1, #ffffff)',
+              color: C.text,
+              border: '1px solid ' + C.border,
               borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', gap: 10,
-              boxShadow: '0 18px 48px rgba(0,0,0,0.28)',
+              boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
             },
           },
             h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
@@ -4186,7 +4192,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.2'),
         ),
         h(
           'div',
