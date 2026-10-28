@@ -96,6 +96,25 @@ def main():
             if resp.status != 200:
                 failures.append("/timetable 应返回 200")
 
+        code, body = post("/timetable/add", {"day": 1, "start": "8:00", "course": "Smoke 101", "room": "A1"})
+        if code != 200:
+            failures.append("新增课程应返回 200，实际 %s %s" % (code, body[:80]))
+        else:
+            classes = json.loads(body).get("classes") or []
+            if not any(item.get("course") == "Smoke 101" for item in classes):
+                failures.append("新增的课程没有出现在课表里")
+            elif not any(item.get("start") == "08:00" for item in classes):
+                failures.append("上课时间没有补零成 08:00")
+
+        code, body = post("/timetable/save", {"classes": [{"day": 2, "start": "10:00", "course": "Save 201", "room": ""}]})
+        if code != 200:
+            failures.append("整表保存应返回 200，实际 %s %s" % (code, body[:80]))
+
+        with urllib.request.urlopen(BASE + "/plan", timeout=10) as resp:
+            plan = json.loads(resp.read().decode())
+            if not isinstance(plan.get("items"), list):
+                failures.append("/plan 的 items 应该是数组")
+
         if failures:
             print("冒烟失败：")
             for item in failures:
