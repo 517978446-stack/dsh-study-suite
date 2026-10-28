@@ -1,5 +1,13 @@
 # 更新日志
 
+## 7.13.3 — 2026-10-29
+
+**发布分工：本仓库只发 macOS 包**
+- `dev/pack.sh` 现在产出三个包：`study-suite-macos-<ver>.zip`（纯 mac，无 .ps1）、
+  `study-suite-<ver>-macos-win.zip`（含 Windows 脚本的完整包）、`study-suite-windows-<ver>.zip`
+- `release.yml` 只上传 `*macos*.zip`；Windows 包由维护者自行构建发布
+- README 下载表按分工重写
+
 ## 7.13.2 — 2026-10-29
 
 **7.13.1 的 Origin 守卫把自家面板也挡了**
