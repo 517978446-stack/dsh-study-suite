@@ -407,7 +407,11 @@ window.__ModuleLoader__.load({
         try {
           const response = await fetch(ENGINE + '/timetable', { cache: 'no-store' });
           const data = await response.json();
-          setTimetable({ classes: data.classes || [], loading: false, error: '' });
+          setTimetable({
+            classes: data.classes || [],
+            loading: false,
+            error: data.error || '',
+          });
         } catch (err) {
           setTimetable({ classes: [], loading: false, error: '读不到课表' });
         }
@@ -1840,7 +1844,7 @@ window.__ModuleLoader__.load({
       const [tab, setTab] = React.useState('doc');
       const [to, setTo] = React.useState('zh');
       const [engine, setEngine] = React.useState('llm');
-      const [caps, setCaps] = React.useState({ llm: true, asr: true, imageOcr: true, pdfOcr: true, known: false });
+      const [caps, setCaps] = React.useState({ llm: false, asr: false, imageOcr: false, pdfOcr: false, known: false });
       const [docText, setDocText] = React.useState('');
       const [docResult, setDocResult] = React.useState('');
       const [docPairs, setDocPairs] = React.useState([]);
@@ -1897,7 +1901,8 @@ window.__ModuleLoader__.load({
                 known: true,
               };
               setCaps(next);
-              if (!next.llm) {
+              // known 之后才敢根据能力切引擎：初值全 false 时不能动用户选择
+              if (next.known && !next.llm) {
                 setEngine(function (current) { return current === 'llm' ? 'fast' : current; });
               }
             })
@@ -2781,7 +2786,7 @@ window.__ModuleLoader__.load({
       }
 
       function DetectPanel() {
-        const [ocr, setOcr] = React.useState({ image: true, pdf: true, known: false });
+        const [ocr, setOcr] = React.useState({ image: false, pdf: false, known: false });
         React.useEffect(function () {
           let alive = true;
           fetch(ENGINE + '/health', { cache: 'no-store' })
