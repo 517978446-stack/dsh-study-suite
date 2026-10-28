@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: 'dsh-study-suite',
+  id: '@local/study-suite',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -8,8 +8,9 @@ window.__ModuleLoader__.load({
     const StudyModules = (function () {
 
 
-    const STORAGE_KEY = 'dsh-study-panel/v4';
-    const LEGACY_KEY = 'dsh-study-panel/v3';
+    const STORAGE_KEY = 'dsh-study-panel/v5';
+    const LEGACY_KEY = 'dsh-study-panel/v4';
+    const DEFAULT_SEMESTER_START = '2026-09-28';
 
     const DEFAULT_LIST_URL = 'https://www.thecn.com/user';
     const ENGINE = 'http://127.0.0.1:8791';
@@ -87,12 +88,43 @@ window.__ModuleLoader__.load({
       return DEFAULT_COURSES.map((item) => ({ id: uid(), name: item.name, url: item.url }));
     }
 
+    function parseDay(iso) {
+      const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return null;
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function weekOf(startIso, when) {
+      const start = parseDay(startIso);
+      if (!start) return null;
+      const day = 86400000;
+      const diff = Math.floor((new Date(when.getFullYear(), when.getMonth(), when.getDate()) - start) / day);
+      if (diff < 0) return null;
+      const week = Math.floor(diff / 7) + 1;
+      const weekStart = new Date(start.getTime() + (week - 1) * 7 * day);
+      return { week: week, start: weekStart, end: new Date(weekStart.getTime() + 6 * day) };
+    }
+
+    function rangeOfWeek(startIso, n) {
+      const start = parseDay(startIso);
+      if (!start || !n) return null;
+      const day = 86400000;
+      const weekStart = new Date(start.getTime() + (n - 1) * 7 * day);
+      return { start: weekStart, end: new Date(weekStart.getTime() + 6 * day) };
+    }
+
+    function shortDate(d) {
+      return d ? (d.getMonth() + 1) + '/' + d.getDate() : '';
+    }
+
     function load() {
       const saved = readStore(STORAGE_KEY);
       const legacy = saved ? null : readStore(LEGACY_KEY);
       const source = saved && typeof saved === 'object' ? saved : legacy && typeof legacy === 'object' ? legacy : null;
       const base = {
         listUrl: (source && source.courseUrl) || DEFAULT_LIST_URL,
+        semesterStart: DEFAULT_SEMESTER_START,
         links: clone(DEFAULT_LINKS),
         courses: defaultCourses(),
         tasks: [],
@@ -107,6 +139,9 @@ window.__ModuleLoader__.load({
         : base.courses;
       return {
         listUrl: typeof source.listUrl === 'string' && source.listUrl ? source.listUrl : base.listUrl,
+        semesterStart: typeof source.semesterStart === 'string' && source.semesterStart
+          ? source.semesterStart
+          : base.semesterStart,
         links: Array.isArray(source.links) && source.links.length ? source.links : base.links,
         courses: courses.filter((item) => !/CET/i.test(item.name)),
         tasks: Array.isArray(source.tasks)
@@ -381,6 +416,18 @@ window.__ModuleLoader__.load({
       }, [state]);
 
       const remaining = state.tasks.filter((item) => !item.done).length;
+      const nowWeek = weekOf(state.semesterStart, new Date());
+
+      function annotatePage(page) {
+        const text = String(page);
+        const match = text.match(/week\s*(\d{1,2})/i) || text.match(/第\s*(\d{1,2})\s*周/);
+        if (!match) return { suffix: '', past: false };
+        const n = Number(match[1]);
+        const range = rangeOfWeek(state.semesterStart, n);
+        if (!range) return { suffix: '', past: false };
+        const past = nowWeek ? n < nowWeek.week : false;
+        return { suffix: ' [' + shortDate(range.start) + '–' + shortDate(range.end) + ']', past: past };
+      }
       const cards = state.cards;
       const active = cards.length ? cards[((cardIndex % cards.length) + cards.length) % cards.length] : null;
       const linked = state.courses.filter((item) => item.url).length;
@@ -593,6 +640,30 @@ window.__ModuleLoader__.load({
             ),
             h('span', { style: { flex: '1 1 auto' } }),
             h(
+              'span',
+              { style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted } },
+              '开学',
+              h('input', {
+                type: 'date',
+                value: state.semesterStart,
+                onChange: (event) => patch({ semesterStart: event.target.value }),
+                title: '改这里，全面板的周次会跟着重算',
+                style: {
+                  height: 26,
+                  padding: '0 6px',
+                  borderRadius: 8,
+                  border: '1px solid ' + C.border,
+                  background: C.base,
+                  color: C.text,
+                  fontSize: 12,
+                  colorScheme: scheme,
+                },
+              }),
+              nowWeek
+                ? h('span', { style: { fontWeight: 600, color: C.text } }, '第 ' + nowWeek.week + ' 周')
+                : null,
+            ),
+            h(
               'a',
               {
                 href: state.listUrl,
@@ -713,10 +784,19 @@ window.__ModuleLoader__.load({
                                 { key: index, style: { display: 'flex', flexDirection: 'column', gap: 2 } },
                                 h('span', { style: { fontSize: 12, fontWeight: 600 } }, section.title || '(未命名章节)'),
                                 (section.pages || []).slice(0, 8).map(function (page, pageIndex) {
+                                  const mark = annotatePage(page);
                                   return h(
                                     'span',
-                                    { key: pageIndex, style: { fontSize: 12, color: C.muted, paddingLeft: 10 } },
-                                    '· ' + page,
+                                    {
+                                      key: pageIndex,
+                                      style: {
+                                        fontSize: 12,
+                                        color: C.muted,
+                                        paddingLeft: 10,
+                                        opacity: mark.past ? 0.55 : 1,
+                                      },
+                                    },
+                                    '· ' + page + mark.suffix + (mark.past ? '（已过）' : ''),
                                   );
                                 }),
                               );
@@ -2453,7 +2533,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v3.5'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v3.8.0'),
         ),
         h(
           'div',

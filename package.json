@@ -1,6 +1,6 @@
 {
   "name": "dsh-study-suite",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "private": false,
   "type": "module",
   "description": "One panel for course links, course activity, tasks, flashcards, offline translation, voice notes and speaker-labelled minutes.",
