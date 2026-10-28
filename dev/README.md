@@ -51,3 +51,35 @@ python3 dev/check-encoding.py .
 # 5. 提交 + 打 tag（触发 release workflow，自动建 Release 并上传 zip）
 git add -A && git commit -m "release: X.Y.Z" && git tag vX.Y.Z && git push origin main --tags
 ```
+
+## 发版流程（作者用）
+
+```powershell
+# 1. 解压新的安装包
+Expand-Archive study-suite-windows-X.Y.Z.zip -DestinationPath .
+
+# 2. 装
+powershell -ExecutionPolicy Bypass -File study-suite\install.ps1
+
+# 3. 验 —— 装完立刻跑，12 项接口全过才算发得出去
+python "$env:USERPROFILE\.dsh-study-suite\smoke.py"
+```
+
+三步大概 2–3 分钟（依赖已装过会更快）。
+
+macOS 对应的是：
+
+```bash
+./install.sh
+python3 "$HOME/.dsh-study-suite/smoke.py"
+```
+
+### 为什么 smoke 要放进安装目录
+
+`smoke.py` 原本只在解压出来的包里，用户装完删掉 zip 就找不到了。现在 `install.ps1` / `install.sh` 会把它一起拷到安装目录，所以上面第 3 步不需要回到解压目录。
+
+### 发版前还要过的两道闸
+
+1. `python3 dev/check-encoding.py .` —— `.ps1` 带 BOM、`.cmd/.vbs` 是 CRLF，并且扫描 `packages/*.zip`
+2. 推 tag 后看 Actions：`release` 成功即自动建 Release 并上传两个 zip
+
