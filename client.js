@@ -1527,7 +1527,9 @@ window.__ModuleLoader__.load({
               ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, plan.error)
               : null,
             plan.items.length === 0 && !plan.loading && !plan.error
-              ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, '还没有录入待办。')
+              ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
+                  h('p', { style: { margin: 0 } }, '还没有待办。'),
+                  h('p', { style: { margin: '4px 0 0' } }, '这份清单是每个人自己的：在下面添加你的作业标题与截止日期，提醒任务会读取它。'))
               : h(
                   'div',
                   { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
@@ -4331,7 +4333,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.10.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.10.1'),
         ),
         h(
           'div',
