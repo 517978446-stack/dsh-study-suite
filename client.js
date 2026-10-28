@@ -1590,6 +1590,340 @@ window.__ModuleLoader__.load({
     })();
 
     // ---- 同传模块（原 interpreter） ----
+    // ---- 同传引擎：常驻模块级，切走面板也继续录音与识别 ----
+    const Live = (function () {
+      const TARGET_RATE = 16000;
+      const SPEECH_RMS = 0.012;   // 判定「有人在说话」的阈值
+      const SILENCE_MS = 380;     // 说完后静音多久切一句
+      const MIN_MS = 550;         // 太短的片段丢掉
+      const MAX_MS = 2600;        // 一直不停顿就强制切
+      const ENDPOINT = 'http://127.0.0.1:8791';
+
+      const state = {
+        running: false,
+        stream: null,
+        ctx: null,
+        node: null,
+        source: null,
+        listeners: new Set(),
+        history: [],
+        pending: null,
+        queue: [],
+        busy: false,
+        lastError: '',
+        engine: 'fast',
+        target: 'zh',
+        startedAt: 0,
+        paused: false,
+        lastLevelAt: 0,
+        partialAt: 0,
+        partialBusy: false,
+        partialText: '',
+      };
+
+      function emit(type, payload) {
+        // 调试用事件时间线（无副作用，可在控制台查看）
+        try {
+          if (window.__liveLog) {
+            window.__liveLog.push({
+              type: type,
+              at: state.startedAt ? Date.now() - state.startedAt : 0,
+              value: type === 'level' ? Math.round(payload * 1000) / 1000 : undefined,
+            });
+          }
+        } catch (err) { /* ignore */ }
+        state.listeners.forEach(function (fn) {
+          try { fn(type, payload); } catch (err) { /* 订阅方自己出错不该影响录音 */ }
+        });
+      }
+
+      function downsample(input, fromRate) {
+        if (fromRate === TARGET_RATE) return input;
+        const ratio = fromRate / TARGET_RATE;
+        const length = Math.floor(input.length / ratio);
+        const output = new Float32Array(length);
+        for (let i = 0; i < length; i++) {
+          const start = Math.floor(i * ratio);
+          const end = Math.min(input.length, Math.floor((i + 1) * ratio));
+          let sum = 0;
+          for (let k = start; k < end; k++) sum += input[k];
+          output[i] = sum / Math.max(1, end - start);
+        }
+        return output;
+      }
+
+      function encodeWav(samples) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        const write = function (offset, text) {
+          for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+        };
+        write(0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        write(8, 'WAVEfmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, TARGET_RATE, true);
+        view.setUint32(28, TARGET_RATE * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        write(36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++, offset += 2) {
+          const clamped = Math.max(-1, Math.min(1, samples[i]));
+          view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+        }
+        return new Blob([view], { type: 'audio/wav' });
+      }
+
+      function normalise(samples) {
+        let peak = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const value = Math.abs(samples[i]);
+          if (value > peak) peak = value;
+        }
+        if (peak < 0.02 || peak > 0.95) return samples;
+        const gain = 0.9 / peak;
+        const out = new Float32Array(samples.length);
+        for (let i = 0; i < samples.length; i++) out[i] = samples[i] * gain;
+        return out;
+      }
+
+      function rms(samples) {
+        if (!samples.length) return 0;
+        let sum = 0;
+        for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+        return Math.sqrt(sum / samples.length);
+      }
+
+      async function handleSegment(samples) {
+        const level = rms(samples);
+        if (level < SPEECH_RMS * 0.7) return;
+        const wav = encodeWav(normalise(samples));
+        const id = 'live-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        state.partialText = '';
+        state.pending = { id: id, at: Date.now() };
+        emit('pending', state.pending);
+        try {
+          const asr = await fetch(ENDPOINT + '/asr?prompt=auto&vad=0', {
+            method: 'POST',
+            headers: { 'content-type': 'audio/wav' },
+            body: wav,
+          });
+          const asrData = await asr.json().catch(function () { return {}; });
+          if (!asr.ok) throw new Error(asrData.error || '转写失败');
+          const text = (asrData.text || '').trim();
+          if (!text) {
+            state.pending = null;
+            emit('drop', null);
+            return;
+          }
+          const translated = await fetch(ENDPOINT + '/translate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: text, to: state.target, beam: 2, engine: state.engine }),
+          }).then(function (r) { return r.json(); });
+          const item = {
+            id: id,
+            offset: state.startedAt ? Math.round((Date.now() - state.startedAt) / 1000) : 0,
+            src: text,
+            dst: (translated && translated.text) || '',
+            segments: asrData.segments || [],
+            speakers: asrData.speakers || 1,
+            at: Date.now(),
+          };
+          state.history.unshift(item);
+          state.history = state.history.slice(0, 200);
+          state.pending = null;
+          emit('segment', item);
+        } catch (err) {
+          state.lastError = String(err && err.message ? err.message : err);
+          state.pending = null;
+          emit('error', state.lastError);
+        }
+      }
+
+      function onAudio(event) {
+        if (!state.running || state.paused) return;
+        const input = event.inputBuffer.getChannelData(0);
+        const samples = downsample(input, state.ctx.sampleRate);
+        const level = rms(samples);
+        const now = Date.now();
+        if (now - state.lastLevelAt > 120) {
+          state.lastLevelAt = now;
+          emit('level', level);
+          emit('time', Math.round((now - state.startedAt) / 1000));
+        }
+        if (level >= SPEECH_RMS) {
+          state.speaking = true;
+          state.silenceMs = 0;
+        } else if (state.speaking) {
+          state.silenceMs += (samples.length / TARGET_RATE) * 1000;
+        }
+        if (state.speaking) {
+          state.chunks.push(samples);
+          state.chunkMs += (samples.length / TARGET_RATE) * 1000;
+        }
+        // 边说边出字：说话期间每 ~900ms 用当前缓冲做一次快速识别
+        if (
+          state.speaking &&
+          state.chunkMs >= 700 &&
+          now - state.partialAt > 900 &&
+          !state.partialBusy &&
+          state.chunks.length
+        ) {
+          state.partialAt = now;
+          state.partialBusy = true;
+          try {
+            const total = state.chunks.reduce(function (n, chunk) { return n + chunk.length; }, 0);
+            const merged = new Float32Array(total);
+            let cursor = 0;
+            state.chunks.forEach(function (chunk) { merged.set(chunk, cursor); cursor += chunk.length; });
+            // 草稿只送最近 2 秒：越短越快，前面的词已经在屏幕上了
+            const keep = Math.min(merged.length, TARGET_RATE * 2);
+            const snapshot = merged.slice(merged.length - keep);
+            fetch(ENDPOINT + '/asr?prompt=auto&vad=0&beam=1', {
+              method: 'POST',
+              headers: { 'content-type': 'audio/wav' },
+              body: encodeWav(normalise(snapshot)),
+            })
+              .then(function (response) { return response.json(); })
+              .then(function (data) {
+                const text = (data && data.text ? data.text : '').trim();
+                if (text && text !== state.partialText) {
+                  state.partialText = text;
+                  emit('partial', text);
+                }
+              })
+              .catch(function () { /* 草稿失败不影响正式那段 */ })
+              .finally(function () { state.partialBusy = false; });
+          } catch (err) {
+            state.partialBusy = false;
+          }
+        }
+
+        const long = state.chunkMs >= MAX_MS;
+        const done = state.speaking && state.silenceMs >= SILENCE_MS && state.chunkMs >= MIN_MS;
+        if (!done && !long) return;
+
+        const total = state.chunks.reduce(function (n, chunk) { return n + chunk.length; }, 0);
+        const merged = new Float32Array(total);
+        let offset = 0;
+        state.chunks.forEach(function (chunk) { merged.set(chunk, offset); offset += chunk.length; });
+        state.chunks = [];
+        state.chunkMs = 0;
+        state.speaking = false;
+        state.silenceMs = 0;
+        if (merged.length / TARGET_RATE * 1000 >= MIN_MS) handleSegment(merged);
+      }
+
+      function warmup() {
+        // 提前把语音模型和翻译引擎加载进内存，否则第一句要多等 4-6 秒
+        try {
+          const silence = encodeWav(new Float32Array(TARGET_RATE * 0.6));
+          fetch(ENDPOINT + '/asr?vad=0', {
+            method: 'POST',
+            headers: { 'content-type': 'audio/wav' },
+            body: silence,
+          }).catch(function () { /* 预热失败不影响正式使用 */ });
+          fetch(ENDPOINT + '/translate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: 'warmup sentence', to: state.target, beam: 1, engine: state.engine }),
+          }).catch(function () { /* ignore */ });
+        } catch (err) {
+          /* ignore */
+        }
+      }
+
+      async function start(options) {
+        if (state.running) return;
+        state.engine = (options && options.engine) || 'fast';
+        state.target = (options && options.target) || 'zh';
+        state.lastError = '';
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: Object.assign(
+            { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+            options && options.deviceId ? { deviceId: { exact: options.deviceId } } : {},
+          ),
+        });
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new Ctx();
+        const source = ctx.createMediaStreamSource(stream);
+        const node = ctx.createScriptProcessor(4096, 1, 1);
+        state.stream = stream;
+        state.ctx = ctx;
+        state.source = source;
+        state.node = node;
+        state.chunks = [];
+        state.chunkMs = 0;
+        state.speaking = false;
+        state.silenceMs = 0;
+        state.running = true;
+        state.paused = false;
+        state.startedAt = Date.now();
+        warmup();
+        node.onaudioprocess = onAudio;
+        source.connect(node);
+        node.connect(ctx.destination);
+        emit('start', { at: Date.now() });
+      }
+
+      function pause() {
+        state.paused = true;
+        emit('paused', null);
+      }
+
+      function resume() {
+        state.paused = false;
+        emit('resumed', null);
+      }
+
+      function elapsed() {
+        return state.startedAt ? Math.round((Date.now() - state.startedAt) / 1000) : 0;
+      }
+
+      function stop() {
+        if (!state.running && !state.node) return;
+        state.running = false;
+        try { state.node && state.node.disconnect(); } catch (err) { /* ignore */ }
+        try { state.source && state.source.disconnect(); } catch (err) { /* ignore */ }
+        try { state.ctx && state.ctx.close(); } catch (err) { /* ignore */ }
+        if (state.stream) state.stream.getTracks().forEach(function (track) { track.stop(); });
+        state.stream = null;
+        state.ctx = null;
+        state.source = null;
+        state.node = null;
+        state.chunks = [];
+        state.chunkMs = 0;
+        state.speaking = false;
+        state.partialText = '';
+        state.partialBusy = false;
+        emit('stop', null);
+      }
+
+      function subscribe(fn) {
+        state.listeners.add(fn);
+        return function () { state.listeners.delete(fn); };
+      }
+
+      return {
+        start: start,
+        stop: stop,
+        pause: pause,
+        resume: resume,
+        elapsed: elapsed,
+        isPaused: function () { return state.paused; },
+        subscribe: subscribe,
+        isRunning: function () { return state.running; },
+        history: function () { return state.history.slice(); },
+        pending: function () { return state.pending; },
+        lastError: function () { return state.lastError; },
+      };
+    })();
+
     const InterpreterModules = (function () {
 
 
@@ -1907,12 +2241,59 @@ window.__ModuleLoader__.load({
       const toRef = React.useRef(to);
       toRef.current = to;
 
+      const [pending, setPending] = React.useState(null);
+      const [partialText, setPartialText] = React.useState('');
+      const [liveEngine, setLiveEngine] = React.useState('fast');
+      const [levels, setLevels] = React.useState([]);
+      const [elapsed, setElapsed] = React.useState(0);
+      const [summary, setSummary] = React.useState([]);
+      const [summaryBusy, setSummaryBusy] = React.useState(false);
+      const subsRef = React.useRef(subs);
+      const lastSummaryRef = React.useRef(0);
+      subsRef.current = subs;
+
+      // 订阅常驻引擎：面板卸载只退订，不打断录音（切去别的标签/面板仍在同传）
       React.useEffect(
         function () {
-          return function () {
-            liveRef.current = false;
-            if (streamRef.current) streamRef.current.getTracks().forEach((track) => track.stop());
-          };
+          const unsubscribe = Live.subscribe(function (type, payload) {
+            if (type === 'start') {
+              setMic('live');
+              setStatus('online');
+            } else if (type === 'stop') {
+              setMic('idle');
+              setPending(null);
+            } else if (type === 'pending') {
+              setPending(payload);
+              setPartialText('');
+            } else if (type === 'drop') {
+              setPending(null);
+              setPartialText('');
+            } else if (type === 'segment') {
+              setPending(null);
+              if (Date.now() - lastSummaryRef.current > 15000) {
+                lastSummaryRef.current = Date.now();
+                setTimeout(function () { refreshSummary(); }, 0);
+              }
+              setSubs(function (prev) { return [payload].concat(prev).slice(0, 60); });
+              liveSegmentsRef.current = liveSegmentsRef.current.concat(payload.segments || []);
+              setStatus('online');
+            } else if (type === 'error') {
+              setPending(null);
+              setError(payload);
+            } else if (type === 'partial') {
+              setPartialText(payload);
+            } else if (type === 'level') {
+              setLevels(function (prev) { return prev.concat([payload]).slice(-40); });
+            } else if (type === 'time') {
+              setElapsed(payload);
+            }
+          });
+          // 面板重新打开时把已经识别的内容接回来
+          const past = Live.history();
+          if (past.length) setSubs(past.slice(0, 60));
+          setMic(Live.isRunning() ? 'live' : 'idle');
+          setPending(Live.pending());
+          return unsubscribe;
         },
         [],
       );
@@ -1950,6 +2331,34 @@ window.__ModuleLoader__.load({
           engine: caps.llm ? engine : 'fast',
         });
         return data;
+      }
+
+      async function refreshSummary() {
+        const items = subsRef.current || [];
+        if (!items.length) {
+          setSummary([]);
+          return;
+        }
+        setSummaryBusy(true);
+        try {
+          const segments = [];
+          items.slice(0, 40).forEach(function (item) {
+            (item.segments && item.segments.length ? item.segments : [{ text: item.src }]).forEach(function (seg) {
+              segments.push(seg);
+            });
+          });
+          const response = await fetch(ENGINE + '/summary', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ segments: segments }),
+          });
+          const data = await response.json().catch(function () { return {}; });
+          setSummary(Array.isArray(data.bullets) ? data.bullets : []);
+        } catch (err) {
+          /* 总结失败不影响字幕 */
+        } finally {
+          setSummaryBusy(false);
+        }
       }
 
       async function translateDoc() {
@@ -2113,40 +2522,37 @@ window.__ModuleLoader__.load({
         }
       }
 
+      React.useEffect(
+        function () {
+          if (mic !== 'live') return undefined;
+          const timer = setInterval(function () { refreshSummary(); }, 15000);
+          return function () { clearInterval(timer); };
+        },
+        [mic],
+      );
+
       async function startLive() {
-        if (mic !== 'idle') return;
-        setMic('live');
+        if (Live.isRunning()) return;
         setError('');
-        liveRef.current = true;
         try {
-          while (liveRef.current) {
-            const blob = await recordOnce(6000);
-            if (!liveRef.current) break;
-            try {
-              const pair = await processClip(blob);
-              if (pair) {
-                setSubs((prev) => [{ id: String(Date.now()), ...pair }].concat(prev).slice(0, 60));
-                liveSegmentsRef.current = liveSegmentsRef.current.concat(pair.segments || []);
-                setStatus('online');
-              }
-            } catch (err) {
-              setError(err.message);
-            }
-          }
+          await Live.start({
+            // 实时字幕优先延迟：7B 每句 2-3 秒，跟不上说话
+            engine: liveEngine,
+            target: toRef.current,
+            deviceId: deviceRef.current || undefined,
+          });
         } catch (err) {
-          setError(err.message);
-        } finally {
-          liveRef.current = false;
+          setError(err.message || '麦克风打不开');
           setMic('idle');
-          if (liveSegmentsRef.current.length) {
-            buildMinutes(liveSegmentsRef.current);
-            liveSegmentsRef.current = [];
-          }
         }
       }
 
       function stopLive() {
-        liveRef.current = false;
+        Live.stop();
+        if (liveSegmentsRef.current.length) {
+          buildMinutes(liveSegmentsRef.current);
+          liveSegmentsRef.current = [];
+        }
       }
 
       function copy(text, tag) {
@@ -2425,201 +2831,233 @@ window.__ModuleLoader__.load({
             ),
       );
 
-      const voicePane = h(
-        Card,
-        { title: '语音转写 + 翻译', note: '降噪 · 静音过滤 · 全本地' },
-        h(
+      const clock = function (seconds) {
+        const total = Math.max(0, Math.round(seconds || 0));
+        const m = Math.floor(total / 60);
+        const sec = total % 60;
+        return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+      };
+
+      const linkBtn = {
+        border: 'none',
+        background: 'transparent',
+        color: C.muted,
+        cursor: 'pointer',
+        fontSize: 11,
+        padding: 0,
+      };
+
+      const renderSub = function (item) {
+        return h(
           'div',
-          { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
+          {
+            key: item.id,
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: '1px solid ' + C.border,
+              background: C.base,
+            },
+          },
           h(
-            Button,
-            { onClick: recordShot, primary: true, disabled: mic !== 'idle' || !caps.asr },
-            mic === 'shot' ? '录音中（8 秒）…' : '录一段（8 秒）',
-          ),
-          h(
-            Button,
-            { onClick: mic === 'live' ? stopLive : startLive, disabled: mic === 'shot' || !caps.asr },
-            mic === 'live' ? '停止听写' : '连续听写',
-          ),
-          !caps.asr
-            ? h(
-                'span',
-                { style: { fontSize: 12, color: 'var(--dsw-alias-state-warn-primary)' } },
-                '未安装语音组件：Windows 请用 -Full 重装，或到 macOS 使用',
-              )
-            : !caps.asrModelReady
+            'div',
+            { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            item.speaker
               ? h(
                   'span',
-                  { style: { fontSize: 12, color: C.muted } },
-                  '首次使用会下载语音模型（约 500MB），请保持联网',
-                )
-              : null,
-          mic === 'live'
-            ? h('span', { style: { fontSize: 12, color: C.muted } }, '每 6 秒出一段字幕')
-            : null,
-          h(
-            Button,
-            {
-              onClick: () => {
-                const all = [];
-                subs.forEach((item) => (item.segments || []).forEach((seg) => all.push(seg)));
-                buildMinutes(all);
-              },
-              disabled: mic !== 'idle' || subs.length === 0,
-            },
-            '生成纪要',
-          ),
-        ),
-        h(
-          'div',
-          { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
-          h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, '音频输入'),
-          h(
-            'select',
-            {
-              value: deviceId,
-              onChange: (event) => setDeviceId(event.target.value),
-              style: {
-                height: 28,
-                minWidth: 220,
-                padding: '0 8px',
-                borderRadius: 8,
-                border: '1px solid ' + C.border,
-                background: C.base,
-                color: C.text,
-                fontSize: 12,
-              },
-            },
-            h('option', { value: '' }, '系统默认麦克风'),
-            devices.map((device, index) =>
-              h('option', { key: device.deviceId || index, value: device.deviceId },
-                device.label || '输入设备 ' + (index + 1)),
-            ),
-          ),
-          h(Button, { onClick: refreshDevices }, '刷新'),
-          devices.some((d) => /blackhole/i.test(d.label || ''))
-            ? h('span', { style: { fontSize: 11, color: C.ok } }, '已检测到 BlackHole（可录系统声音）')
-            : null,
-        ),
-        h(
-          'p',
-          { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
-          '四层过滤：浏览器回声消除 + 降噪 + 自动增益 → 音量门限 → 服务端 VAD 丢弃非语音段 → Whisper 自身抗噪。首次点击会请求麦克风权限。',
-        ),
-        minutes
-          ? h(
-              'div',
-              {
-                style: {
-                  padding: '12px 14px',
-                  borderRadius: 10,
-                  border: '1px solid ' + C.border,
-                  background: C.base,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                },
-              },
-              minutes.loading
-                ? h('span', { style: { fontSize: 12, color: C.muted } }, '正在生成纪要（本地 7B 模型，约 5–10 秒）…')
-                : minutes.error
-                  ? h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, '纪要生成失败：' + minutes.error)
-                  : h(
-                      React.Fragment,
-                      null,
-                      h('div', { style: { fontSize: 14, fontWeight: 600 } }, (minutes.data && minutes.data['标题']) || '课堂纪要'),
-                      ((minutes.data && minutes.data['要点']) || []).length
-                        ? h(
-                            'ul',
-                            { style: { margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 } },
-                            (minutes.data['要点'] || []).map((point, index) =>
-                              h('li', { key: 'p' + index, style: { fontSize: 13, lineHeight: 1.6 } }, point),
-                            ),
-                          )
-                        : null,
-                      ((minutes.data && minutes.data['待办']) || []).length
-                        ? h(
-                            'div',
-                            { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-                            h('span', { style: { fontSize: 12, fontWeight: 600, color: C.muted } }, '待办'),
-                            (minutes.data['待办'] || []).map((todo, index) =>
-                              h('span', { key: 't' + index, style: { fontSize: 13 } }, '□ ' + todo),
-                            ),
-                          )
-                        : null,
-                      ((minutes.data && minutes.data['术语']) || []).length
-                        ? h(
-                            'div',
-                            { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
-                            (minutes.data['术语'] || []).map((pair, index) =>
-                              h(
-                                'span',
-                                {
-                                  key: 'g' + index,
-                                  style: {
-                                    fontSize: 11,
-                                    padding: '1px 6px',
-                                    borderRadius: 6,
-                                    border: '1px solid ' + C.border,
-                                    color: C.muted,
-                                  },
-                                },
-                                Array.isArray(pair) ? pair.join(' → ') : String(pair),
-                              ),
-                            ),
-                          )
-                        : null,
-                      minutes.path
-                        ? h('span', { style: { fontSize: 11, color: C.muted, wordBreak: 'break-all' } }, '已保存：' + minutes.path)
-                        : null,
-                    ),
-            )
-          : null,
-        subs.length === 0
-          ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, '还没有字幕。点「录一段」试试。')
-          : h(
-              'ul',
-              { style: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 } },
-              subs.map((item) =>
-                h(
-                  'li',
                   {
-                    key: item.id,
                     style: {
-                      padding: '8px 10px',
-                      borderRadius: 8,
+                      fontSize: 11,
+                      padding: '1px 6px',
+                      borderRadius: 6,
                       border: '1px solid ' + C.border,
-                      background: C.base,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 4,
+                      color: C.muted,
                     },
                   },
-                  h(
-                    'div',
-                    { style: { display: 'flex', gap: 6, alignItems: 'baseline' } },
-                    item.speaker
-                      ? h(
-                          'span',
-                          {
-                            style: {
-                              fontSize: 11,
-                              padding: '1px 6px',
-                              borderRadius: 6,
-                              border: '1px solid ' + C.border,
-                              color: C.muted,
-                              flex: '0 0 auto',
-                            },
-                          },
-                          item.speaker,
-                        )
-                      : null,
-                    h('span', { style: { flex: '1 1 auto', fontSize: 12, color: C.muted, wordBreak: 'break-word' } }, item.src),
-                  ),
-                  h('span', { style: { fontSize: 13, fontWeight: 500, wordBreak: 'break-word' } }, item.dst),
-                ),
+                  item.speaker,
+                )
+              : null,
+            h('span', { style: { fontSize: 11, color: C.muted } }, clock(item.offset)),
+            h('span', { style: { flex: '1 1 auto' } }),
+            h('button', { type: 'button', onClick: () => copy(item.dst, item.id), style: linkBtn },
+              copied === item.id ? '已复制' : '复制'),
+          ),
+          h('span', { style: { fontSize: 13, color: C.muted, wordBreak: 'break-word' } }, item.src),
+          h('span', { style: { fontSize: 14, fontWeight: 500, wordBreak: 'break-word' } }, item.dst),
+        );
+      };
+
+      const voicePane = h(
+        Card,
+        {
+          title: '同传工作台',
+          note: caps.asr ? '说话即出字 · 切走标签也继续同传' : '未安装语音组件',
+        },
+        // 状态条：计时 + 波形 + 控制
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+          h('span', {
+            style: {
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              background: mic === 'live' ? (Live.isPaused() ? C.warn : C.ok) : C.border,
+            },
+          }),
+          h('span', { style: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } },
+            clock(mic === 'live' ? elapsed : 0)),
+          h(
+            'div',
+            { style: { display: 'flex', alignItems: 'flex-end', gap: 2, height: 18, flex: '1 1 120px', minWidth: 80 } },
+            (levels.length ? levels : new Array(24).fill(0)).slice(-40).map(function (value, index) {
+              return h('span', {
+                key: index,
+                style: {
+                  width: 3,
+                  height: Math.max(2, Math.min(18, value * 260)),
+                  background: C.accent,
+                  borderRadius: 1,
+                  opacity: value > 0.012 ? 0.85 : 0.25,
+                },
+              });
+            }),
+          ),
+          mic === 'live'
+            ? h(Button, { onClick: () => (Live.isPaused() ? Live.resume() : Live.pause()) },
+                Live.isPaused() ? '继续' : '暂停')
+            : h(Button, { onClick: startLive, primary: true, disabled: !caps.asr || mic === 'shot' }, '开始同传'),
+          mic === 'live'
+            ? h(Button, { onClick: stopLive, primary: true }, '停止')
+            : h(
+                'span',
+                { style: { display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11, color: C.muted } },
+                '引擎',
+                h('button', { type: 'button', onClick: () => setLiveEngine('fast'),
+                  style: Object.assign(pillStyle(liveEngine === 'fast'), { height: 24, fontSize: 11 }) }, '快速'),
+                h('button', { type: 'button', onClick: () => setLiveEngine('llm'), disabled: !caps.llm,
+                  style: Object.assign(pillStyle(liveEngine === 'llm'), { height: 24, fontSize: 11, opacity: caps.llm ? 1 : 0.4 }) }, '精准'),
               ),
+          h(Button, { onClick: recordShot, disabled: mic !== 'idle' || !caps.asr || Live.isRunning() }, '录一段'),
+        ),
+        !caps.asr
+          ? h('p', { style: { margin: '8px 0 0', fontSize: 12, color: 'var(--dsw-alias-state-warn-primary)' } },
+              '未安装语音组件：Windows 请用 -Full 重装，或到 macOS 使用')
+          : !caps.asrModelReady
+            ? h('p', { style: { margin: '8px 0 0', fontSize: 12, color: C.muted } },
+                '首次使用会下载语音模型（约 500MB），请保持联网')
+            : null,
+        error ? h('p', { style: { margin: '8px 0 0', fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, error) : null,
+        // 两栏：字幕流 + 实时总结
+        h(
+          'div',
+          {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)',
+              gap: 14,
+              marginTop: 12,
+              alignItems: 'start',
+            },
+          },
+          h(
+            'div',
+            {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                maxHeight: 430,
+                overflowY: 'auto',
+                paddingRight: 4,
+              },
+            },
+            pending
+              ? h(
+                  'div',
+                  {
+                    style: {
+                      display: 'flex',
+                      gap: 8,
+                      alignItems: 'center',
+                      fontSize: 12,
+                      color: C.muted,
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      border: '1px dashed ' + C.border,
+                    },
+                  },
+                  h('span', {
+                    ref: function (node) {
+                      if (!node || node.dataset.pulsing) return;
+                      node.dataset.pulsing = '1';
+                      if (typeof node.animate === 'function') {
+                        node.animate([{ opacity: 0.25 }, { opacity: 1 }, { opacity: 0.25 }],
+                          { duration: 1100, iterations: Infinity });
+                      }
+                    },
+                    style: { width: 6, height: 6, borderRadius: 3, background: C.accent },
+                  }),
+                  h('span', null, partialText || '正在识别…'),
+                )
+              : null,
+            subs.length
+              ? subs.map(renderSub)
+              : h('p', { style: { margin: 0, fontSize: 12, color: C.muted } },
+                  mic === 'live' ? '在听了，开口说话就会出现字幕。' : '点「开始同传」，说话时这里会实时出中英字幕。'),
+          ),
+          h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+            h(
+              'div',
+              { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' } },
+              h('span', { style: { fontSize: 13, fontWeight: 600 } }, '实时总结'),
+              h('button', { type: 'button', onClick: refreshSummary, style: linkBtn },
+                summaryBusy ? '生成中…' : '刷新'),
             ),
+            summary.length
+              ? h(
+                  'ul',
+                  { style: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 } },
+                  summary.map(function (line, index) {
+                    return h(
+                      'li',
+                      {
+                        key: index,
+                        style: {
+                          fontSize: 12,
+                          lineHeight: 1.6,
+                          color: C.text,
+                          paddingLeft: 10,
+                          borderLeft: '2px solid ' + C.accent,
+                        },
+                      },
+                      '· ' + line,
+                    );
+                  }),
+                )
+              : h('p', { style: { margin: 0, fontSize: 12, color: C.muted } },
+                  summaryBusy ? '话题生成中…' : '开始同传后，这里会边听边总结要点。'),
+            h(
+              'button',
+              {
+                type: 'button',
+                onClick: function () {
+                  const all = [];
+                  subs.forEach(function (item) { (item.segments || []).forEach(function (seg) { all.push(seg); }); });
+                  buildMinutes(all);
+                },
+                disabled: !subs.length,
+                style: Object.assign(pillStyle(false), { height: 26, marginTop: 4, opacity: subs.length ? 1 : 0.5 }),
+              },
+              '生成完整纪要',
+            ),
+          ),
+        ),
       );
 
       return h(
@@ -3143,6 +3581,16 @@ window.__ModuleLoader__.load({
     function Suite() {
       const scheme = useAppColorScheme();
       const [tab, setTab] = React.useState('study');
+      const [liveOn, setLiveOn] = React.useState(Live.isRunning());
+
+      React.useEffect(function () {
+        const unsubscribe = Live.subscribe(function (type) {
+          if (type === 'start') setLiveOn(true);
+          else if (type === 'stop') setLiveOn(false);
+        });
+        setLiveOn(Live.isRunning());
+        return unsubscribe;
+      }, []);
 
       function pill(active) {
         return {
@@ -3177,7 +3625,53 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.2.1'),
+          liveOn
+            ? h(
+                'span',
+                {
+                  style: {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    height: 26,
+                    padding: '0 10px',
+                    borderRadius: 13,
+                    border: '1px solid ' + SHELL_C.accent,
+                    color: SHELL_C.accent,
+                    fontSize: 12,
+                  },
+                },
+                h('span', {
+                  ref: function (node) {
+                    if (!node || node.dataset.pulsing) return;
+                    node.dataset.pulsing = '1';
+                    if (typeof node.animate === 'function') {
+                      node.animate([{ opacity: 0.2 }, { opacity: 1 }, { opacity: 0.2 }],
+                        { duration: 1100, iterations: Infinity });
+                    }
+                  },
+                  style: { width: 6, height: 6, borderRadius: 3, background: SHELL_C.accent },
+                }),
+                '同传中',
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    onClick: function () { Live.stop(); },
+                    style: {
+                      border: 'none',
+                      background: 'transparent',
+                      color: SHELL_C.accent,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      padding: 0,
+                    },
+                  },
+                  '停止',
+                ),
+              )
+            : null,
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.3.1'),
         ),
         h(
           'div',
