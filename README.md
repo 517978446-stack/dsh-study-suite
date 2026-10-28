@@ -23,14 +23,14 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 - **查看作业说明**：由本地服务 `/file` 读取你电脑里的作业文件（PDF 直接在浏览器里打开）
 - **打开课程**：跳到对应的 CN 课程页
 
-安全限制：`/file` 只接受来自 `127.7.1.1` 的请求，且只允许家目录下的文档类型。
+安全限制：`/file` 只接受来自 `127.8.0.1` 的请求，且只允许家目录下的文档类型。
 
 ## 下载安装包
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| Windows | [study-suite-windows-7.7.1.zip](packages/study-suite-windows-7.7.1.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
-| macOS + Windows | [study-suite-7.7.1-macos-win.zip](packages/study-suite-7.7.1-macos-win.zip) | 完整版，含启动脚本 |
+| Windows | [study-suite-windows-7.8.0.zip](packages/study-suite-windows-7.8.0.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
+| macOS + Windows | [study-suite-7.8.0-macos-win.zip](packages/study-suite-7.8.0-macos-win.zip) | 完整版，含启动脚本 |
 
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
 
@@ -86,7 +86,7 @@ npm i dsh-study-suite@3.7.0   # 若已发布到 npm
 - macOS：`./install.sh`（最小约 200MB）
 - Windows：`powershell -ExecutionPolicy Bypass -File install.ps1`
 
-装完服务监听 `127.7.1.1:8791`，面板就能连上。
+装完服务监听 `127.8.0.1:8791`，面板就能连上。
 
 ## 平台支持
 
@@ -116,7 +116,7 @@ Windows 上还有两个脚本：`check-win.ps1`（装之前查环境）、`docto
 ## 隐私
 
 - 插件代码里不含任何个人数据：课程清单、待办、课表都存在**你自己电脑**上
-- 服务只监听 `127.7.1.1`，不对外网发起请求（CN 抓取除外，用的是你自己的登录态）
+- 服务只监听 `127.8.0.1`，不对外网发起请求（CN 抓取除外，用的是你自己的登录态）
 - 上课录像、翻译、检测全部在本机完成，不上传
 
 ## 许可
