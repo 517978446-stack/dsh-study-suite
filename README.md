@@ -29,8 +29,8 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| Windows | [study-suite-windows-6.8.2.zip](packages/study-suite-windows-6.8.2.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
-| macOS + Windows + 手机 | [study-suite-6.8.2-macos-win-mobile.zip](packages/study-suite-6.8.2-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
+| Windows | [study-suite-windows-6.8.3.zip](packages/study-suite-windows-6.8.3.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
+| macOS + Windows + 手机 | [study-suite-6.8.3-macos-win-mobile.zip](packages/study-suite-6.8.3-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
 
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
 
