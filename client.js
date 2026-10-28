@@ -404,6 +404,7 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState(load);
       const [digest, setDigest] = React.useState({ loading: true, courses: [], fetchedAt: '', error: '' });
       const [expanded, setExpanded] = React.useState({});
+      const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
       const [frontDraft, setFrontDraft] = React.useState('');
@@ -465,7 +466,37 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         loadDigest();
+        loadPlan();
       }, []);
+
+      async function loadPlan() {
+        try {
+          const response = await fetch(ENGINE + '/plan', { cache: 'no-store' });
+          const data = await response.json();
+          setPlan({ items: data.items || [], loading: false, error: '' });
+        } catch (err) {
+          setPlan({ items: [], loading: false, error: '读不到课程待办' });
+        }
+      }
+
+      async function togglePlan(id, done) {
+        setPlan(function (prev) {
+          return Object.assign({}, prev, {
+            items: prev.items.map(function (item) {
+              return item.id === id ? Object.assign({}, item, { done: done }) : item;
+            }),
+          });
+        });
+        try {
+          await fetch(ENGINE + '/plan/toggle', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: id, done: done }),
+          });
+        } catch (err) {
+          /* 失败就下次刷新时纠正 */
+        }
+      }
 
       function toggleCourse(name) {
         setExpanded(function (prev) {
@@ -804,6 +835,86 @@ window.__ModuleLoader__.load({
                             !(course.sections || []).length && !course.error
                               ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有可见的章节内容。')
                               : null,
+                          )
+                        : null,
+                    );
+                  }),
+                ),
+          ),
+          h(
+            Card,
+            {
+              title: '课程待办',
+              note: plan.loading
+                ? '读取中…'
+                : plan.items.filter(function (i) { return !i.done; }).length + ' 项未完成',
+              action: h(Button, { onClick: loadPlan }, '刷新'),
+            },
+            plan.error
+              ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, plan.error)
+              : null,
+            plan.items.length === 0 && !plan.loading && !plan.error
+              ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, '还没有录入待办。')
+              : h(
+                  'div',
+                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  plan.items.slice().sort(function (a, b) {
+                    if (!a.due && !b.due) return 0;
+                    if (!a.due) return 1;
+                    if (!b.due) return -1;
+                    return a.due < b.due ? -1 : 1;
+                  }).map(function (item) {
+                    const overdue = item.due && !item.done && item.due < new Date().toISOString().slice(0, 10);
+                    return h(
+                      'div',
+                      {
+                        key: item.id,
+                        style: {
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 8,
+                          padding: '7px 10px',
+                          borderRadius: 8,
+                          border: '1px solid ' + (overdue ? 'var(--dsw-alias-state-error-primary)' : C.border),
+                          background: C.base,
+                        },
+                      },
+                      h(Checkbox, { checked: !!item.done, onChange: function (v) { togglePlan(item.id, v); } }),
+                      h(
+                        'div',
+                        { style: { display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 auto', minWidth: 0 } },
+                        h(
+                          'div',
+                          { style: { display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' } },
+                          h('span', { style: { fontSize: 11, color: C.muted } }, item.course),
+                          h(
+                            'span',
+                            {
+                              style: {
+                                fontSize: 13,
+                                color: item.done ? C.muted : C.text,
+                                textDecoration: item.done ? 'line-through' : 'none',
+                                wordBreak: 'break-word',
+                              },
+                            },
+                            item.title,
+                          ),
+                        ),
+                        item.note
+                          ? h('span', { style: { fontSize: 11, color: C.muted } }, item.note)
+                          : null,
+                      ),
+                      item.due
+                        ? h(
+                            'span',
+                            {
+                              style: {
+                                fontSize: 11,
+                                flex: '0 0 auto',
+                                color: overdue ? 'var(--dsw-alias-state-error-primary)' : C.muted,
+                              },
+                            },
+                            (overdue ? '逾期 ' : '截止 ') + item.due.slice(5),
                           )
                         : null,
                     );
@@ -2533,7 +2644,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v3.8.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v3.9.0'),
         ),
         h(
           'div',
