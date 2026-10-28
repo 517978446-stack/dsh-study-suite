@@ -516,6 +516,8 @@ window.__ModuleLoader__.load({
       const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
       const [editingCourse, setEditingCourse] = React.useState({});
       const [showDone, setShowDone] = React.useState(false);
+      const [filters, setFilters] = React.useState({});
+      const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
       const [frontDraft, setFrontDraft] = React.useState('');
@@ -578,6 +580,10 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         loadDigest();
         loadPlan();
+        fetch(ENGINE + '/filters', { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) { setFilters((data && data.filters) || {}); })
+          .catch(function () { setFilters({}); });
       }, []);
 
       async function loadPlan() {
@@ -819,9 +825,26 @@ window.__ModuleLoader__.load({
                     overflowY: 'auto',
                   },
                 },
-                (info.sections || []).length === 0
-                  ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有可见的章节内容。')
-                  : (info.sections || []).map(function (section, index) {
+                (function () {
+                  const filter = filters[item.name];
+                  const sections = info.sections || [];
+                  const isTeacherHeading = (title) => /^(Ms|Mrs|Mr|Dr|Prof)\b/i.test(title || '') || /^Nur\s/i.test(title || '');
+                  const mine = filter
+                    ? sections.filter(function (sec) {
+                        const title = sec.title || '';
+                        return !isTeacherHeading(title) || title.toLowerCase().indexOf(filter.teacher.toLowerCase()) >= 0;
+                      })
+                    : sections;
+                  const others = filter
+                    ? sections.filter(function (sec) {
+                        const title = sec.title || '';
+                        return isTeacherHeading(title) && title.toLowerCase().indexOf(filter.teacher.toLowerCase()) < 0;
+                      })
+                    : [];
+                  const showing = showOtherTeachers[item.name] ? sections : mine;
+                  const body = showing.length === 0
+                    ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有可见的章节内容。')
+                    : showing.map(function (section, index) {
                       return h(
                         'div',
                         { key: index, style: { display: 'flex', flexDirection: 'column', gap: 2 } },
@@ -843,7 +866,47 @@ window.__ModuleLoader__.load({
                           );
                         }),
                       );
-                    }),
+                    });
+                  return h(
+                    'div',
+                    { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                    body,
+                    filter
+                      ? h(
+                          'div',
+                          { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 11, color: C.muted } },
+                          h('span', null, '只显示 ' + (filter.label || filter.teacher) + ' 的资料'),
+                          others.length
+                            ? h(
+                                'button',
+                                {
+                                  type: 'button',
+                                  onClick: function (event) {
+                                    event.stopPropagation();
+                                    setShowOtherTeachers(function (prev) {
+                                      var next = Object.assign({}, prev);
+                                      next[item.name] = !next[item.name];
+                                      return next;
+                                    });
+                                  },
+                                  style: {
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: C.accent,
+                                    cursor: 'pointer',
+                                    fontSize: 11,
+                                    padding: 0,
+                                  },
+                                },
+                                showOtherTeachers[item.name]
+                                  ? '只看我的老师'
+                                  : '另有 ' + others.length + ' 位老师的资料',
+                              )
+                            : null,
+                        )
+                      : null,
+                  );
+                })(),
                 h(
                   'a',
                   {
@@ -2853,7 +2916,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.2.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.3.0'),
         ),
         h(
           'div',
