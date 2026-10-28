@@ -15,6 +15,13 @@ import urllib.request
 翻译需要模型文件，留给真正的 smoke.py（本地跑）。
 """
 
+# Windows 的 CI runner 控制台是 cp1252，直接 print 中文会 UnicodeEncodeError
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICE = os.path.join(ROOT, "app", "service")
 PORT = "8799"
