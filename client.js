@@ -1183,7 +1183,23 @@ window.__ModuleLoader__.load({
               onClick: function () { if (checkFileRef.current) checkFileRef.current.click(); },
               style: Object.assign(pillStyle(true), { height: 26, fontSize: 11 }),
             }, '选我的草稿检查'),
-            h('span', { style: { fontSize: 11, color: C.muted } }, '常用刚才那份说明自查？选你的成稿更准')));
+            h('span', { style: { fontSize: 11, color: C.muted } }, '选你的成稿（.docx / .pdf / .txt）')));
+          if (panelModal.idle && !data.issues) {
+            body.push(h('p', { key: 'hint', style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.6 } },
+              '选一份你的成稿（.docx / .pdf / .txt）开始检查。'));
+            body.push(h('p', { key: 'hint2', style: { margin: 0, fontSize: 11, color: C.muted, lineHeight: 1.6 } },
+              '下面「检查这份说明」查的是老师的要求原文，不是你的文章。'));
+            body.push(h('button', {
+              key: 'attached',
+              type: 'button',
+              onClick: function () {
+                const doc = (panelModal.item && (panelModal.item.doc
+                  || (panelModal.item.docs && panelModal.item.docs[0] && panelModal.item.docs[0].path))) || '';
+                if (doc) openCheck(panelModal.item, doc, checkTarget);
+              },
+              style: Object.assign(pillStyle(false), { height: 26, fontSize: 11, alignSelf: 'flex-start' }),
+            }, '检查这份说明'));
+          }
           body.push(h('div', { key: 't', style: { display: 'flex', gap: 6, alignItems: 'center' } },
             h('span', { style: { fontSize: 12, color: C.muted } }, '目标字数'),
             h('input', {
@@ -1597,7 +1613,9 @@ window.__ModuleLoader__.load({
                                         onClick: function (event) {
                                           event.stopPropagation();
                                           setCheckTarget('');
-                                          openCheck(item, readDoc.path, '');
+                                          // 不自动检查作业说明，先让用户选自己的成稿
+                                          modalTokenRef.current += 1;
+                                          setPanelModal({ type: 'check', item: item, loading: false, data: null, error: '', idle: true });
                                         },
                                         title: '提交前自查：字数、引用、参考文献、文件名、AI 风险',
                                         style: {
@@ -4209,7 +4227,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.3'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.4'),
         ),
         h(
           'div',
