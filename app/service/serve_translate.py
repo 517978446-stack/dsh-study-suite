@@ -887,6 +887,10 @@ def cn_login_browser(timeout=300):
                     page.goto("https://www.thecn.com/", wait_until="domcontentloaded", timeout=60000)
                 except Exception:
                     pass  # 首次打开慢一点没关系，继续轮询
+                try:
+                    page.bring_to_front()  # 窗口可能被挡在后面，用户会以为没反应
+                except Exception:
+                    pass
 
                 deadline = time.time() + timeout
                 while time.time() < deadline:
@@ -2332,6 +2336,11 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin") or ""
         if not origin:
             return True          # curl / 本机脚本不带 Origin
+        # DSH 桌面端用自定义协议加载页面，Origin 是 dsh-app://app；
+        # 浏览器不允许网页伪造 Origin，白名单这个固定值不会放松边界。
+        # 不带这个判断的话，面板自己的请求会被全部 403 掉。
+        if origin in ("dsh-app://app", "null"):
+            return True
         try:
             host = (urllib.parse.urlparse(origin).hostname or "").lower()
         except Exception:
