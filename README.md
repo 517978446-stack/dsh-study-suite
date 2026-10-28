@@ -29,8 +29,8 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| Windows | [study-suite-windows-6.8.3.zip](packages/study-suite-windows-6.8.3.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
-| macOS + Windows + 手机 | [study-suite-6.8.3-macos-win-mobile.zip](packages/study-suite-6.8.3-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
+| Windows | [study-suite-windows-7.0.0.zip](packages/study-suite-windows-7.0.0.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
+| macOS + Windows + 手机 | [study-suite-7.0.0-macos-win-mobile.zip](packages/study-suite-7.0.0-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
 
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
 
@@ -103,6 +103,20 @@ npm i dsh-study-suite@3.7.0   # 若已发布到 npm
 
 本地启发式估算，**不是** Turnitin / GPTZero 的判定结果，不能作为学术不端证据。
 面板内已有同样的免责声明。
+
+## 自检
+
+```bash
+python3 service/smoke.py        # 10 个接口全跑一遍
+```
+
+Windows 上有两个更细的检查脚本：`check-win.ps1`（装之前查环境）、`doctor.ps1`（装之后查 11 项）。
+
+## 隐私
+
+- 插件代码里不含任何个人数据：课程清单、待办、课表都存在**你自己电脑**上
+- 服务只监听 `127.0.0.1`，不对外网发起请求（CN 抓取除外，用的是你自己的登录态）
+- 上课录像、翻译、检测全部在本机完成，不上传
 
 ## 许可
 
