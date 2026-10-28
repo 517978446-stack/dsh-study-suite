@@ -29,10 +29,21 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| Windows | [study-suite-windows-6.7.0.zip](packages/study-suite-windows-6.7.0.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
-| macOS + Windows + 手机 | [study-suite-6.7.0-macos-win-mobile.zip](packages/study-suite-6.7.0-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
+| Windows | [study-suite-windows-6.8.0.zip](packages/study-suite-windows-6.8.0.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
+| macOS + Windows + 手机 | [study-suite-6.8.0-macos-win-mobile.zip](packages/study-suite-6.8.0-macos-win-mobile.zip) | 完整版，含启动脚本与局域网开关 |
 
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
+
+## Windows 能力说明
+
+| 功能 | Windows |
+|---|---|
+| 翻译（快速引擎） | ✅ |
+| 精准翻译 7B | ❌ 仅 macOS（依赖 MLX） |
+| 术语表 | ⚠️ 只在 7B 精准模式下生效；快速引擎不走术语表 |
+| 语音转写 | 需 `-Full`；模型首次使用时下载 |
+| 说话人分离 | ❌ 未打包 |
+| 图片 / 扫描件 OCR | ❌ 仅 macOS |
 
 ## 界面结构
 

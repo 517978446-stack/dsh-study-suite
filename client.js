@@ -1959,7 +1959,7 @@ window.__ModuleLoader__.load({
               const loaded = (data.idleUnload && data.idleUnload.loaded) || {};
               setMem({ llm: !!loaded.llm, asr: !!loaded.asr });
               const capability = data.capabilities || {};
-              if (capability.llm === false) {
+              if (caps.known && capability.llm === false) {
                 setEngine(function (current) { return current === 'llm' ? 'fast' : current; });
               }
             });
@@ -1977,7 +1977,7 @@ window.__ModuleLoader__.load({
           to: target,
           beam: beam || 2,
           verify: !!wantVerify,
-          engine: engine,
+          engine: caps.llm ? engine : 'fast',
         });
         return data;
       }
@@ -2212,7 +2212,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             onClick: () => setEngine('fast'),
             title: 'opus-mt，80–150ms，术语靠词表保证',
-            style: pillStyle(engine === 'fast'),
+            style: pillStyle(engine === 'fast' || !caps.llm),
           },
           '快速',
         ),
@@ -2225,7 +2225,7 @@ window.__ModuleLoader__.load({
             title: caps.llm
               ? 'Qwen2.5-7B 本地大模型，2–5 秒，语境与格式更好'
               : '仅 macOS（Apple 芯片）可用：7B 依赖 MLX 推理框架，Windows/Linux 请用「快速」',
-            style: Object.assign(pillStyle(engine === 'llm'), {
+            style: Object.assign(pillStyle(engine === 'llm' && caps.llm), {
               opacity: caps.llm ? 1 : 0.45,
               cursor: caps.llm ? 'pointer' : 'not-allowed',
             }),
@@ -2477,7 +2477,13 @@ window.__ModuleLoader__.load({
                 { style: { fontSize: 12, color: 'var(--dsw-alias-state-warn-primary)' } },
                 '未安装语音组件：Windows 请用 -Full 重装，或到 macOS 使用',
               )
-            : null,
+            : !caps.asrModelReady
+              ? h(
+                  'span',
+                  { style: { fontSize: 12, color: C.muted } },
+                  '首次使用会下载语音模型（约 500MB），请保持联网',
+                )
+              : null,
           mic === 'live'
             ? h('span', { style: { fontSize: 12, color: C.muted } }, '每 6 秒出一段字幕')
             : null,
@@ -3195,7 +3201,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.7.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.8.0'),
         ),
         h(
           'div',
