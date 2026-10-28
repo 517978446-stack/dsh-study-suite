@@ -2228,6 +2228,7 @@ window.__ModuleLoader__.load({
       const caps = Capabilities.useCapabilities();
       const [docText, setDocText] = React.useState('');
       const [docResult, setDocResult] = React.useState('');
+      const [docProgress, setDocProgress] = React.useState(null);   // {done,total}
       const [docPairs, setDocPairs] = React.useState([]);
       const [docMs, setDocMs] = React.useState(0);
       const [verify, setVerify] = React.useState(true);
@@ -2372,17 +2373,64 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function splitDoc(text, limit) {
+        // 按段落切，超长段落再按句子切，保证每段不超过 limit 字符
+        const paras = text.split(/\n\s*\n/);
+        const chunks = [];
+        let buffer = '';
+        paras.forEach(function (para) {
+          if ((buffer + '\n\n' + para).length > limit && buffer) {
+            chunks.push(buffer);
+            buffer = para;
+          } else {
+            buffer = buffer ? buffer + '\n\n' + para : para;
+          }
+          while (buffer.length > limit) {
+            const cut = buffer.lastIndexOf('. ', limit);
+            const at = cut > limit * 0.5 ? cut + 1 : limit;
+            chunks.push(buffer.slice(0, at));
+            buffer = buffer.slice(at).trim();
+          }
+        });
+        if (buffer.trim()) chunks.push(buffer);
+        return chunks.filter(function (chunk) { return chunk.trim(); });
+      }
+
       async function translateDoc() {
         setBusy(true);
         setError('');
+        setDocProgress(null);
         try {
-          const data = await run(docText, to, 4, verify);
-          if (data) {
-            setDocResult(data.text);
-            setDocPairs(Array.isArray(data.pairs) ? data.pairs : []);
-            setDocMs(data.ms);
-            setSim(typeof data.similarity === 'number' ? data.similarity : null);
-            setBack(data.back || '');
+          const chunks = splitDoc(docText, 900);
+          if (chunks.length <= 1) {
+            const data = await run(docText, to, 4, verify);
+            if (data) {
+              setDocResult(data.text);
+              setDocPairs(Array.isArray(data.pairs) ? data.pairs : []);
+              setDocMs(data.ms);
+              setSim(typeof data.similarity === 'number' ? data.similarity : null);
+              setBack(data.back || '');
+              setStatus('online');
+            }
+          } else {
+            // 长文档逐段翻：能显示进度，也不会一个请求卡几分钟
+            const started = Date.now();
+            const texts = [];
+            const pairs = [];
+            for (let index = 0; index < chunks.length; index++) {
+              setDocProgress({ done: index, total: chunks.length });
+              const piece = await run(chunks[index], to, 4, false);
+              if (piece) {
+                texts.push(piece.text);
+                (piece.pairs || []).forEach(function (pair) { pairs.push(pair); });
+              }
+            }
+            setDocProgress({ done: chunks.length, total: chunks.length });
+            setDocResult(texts.join('\n\n'));
+            setDocPairs(pairs);
+            setDocMs(Date.now() - started);
+            setSim(null);
+            setBack('');
             setStatus('online');
           }
         } catch (err) {
@@ -2390,6 +2438,7 @@ window.__ModuleLoader__.load({
           setStatus('offline');
         } finally {
           setBusy(false);
+          setDocProgress(null);
         }
       }
 
@@ -2666,12 +2715,19 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h(Button, { onClick: translateDoc, primary: true, disabled: busy || !docText.trim() }, busy ? '翻译中…' : '精翻'),
+          h(Button, { onClick: translateDoc, primary: true, disabled: busy || !docText.trim() },
+            busy
+              ? (docProgress ? '翻译中… ' + docProgress.done + '/' + docProgress.total : '翻译中…')
+              : '精翻'),
           h(Button, { onClick: () => { setDocText(''); setDocResult(''); setDocPairs([]); setError(''); setSim(null); setBack(''); } }, '清空'),
           h('span', { title: '译完后自动回译成原文语言，与原文比对，给出一致度评分' },
             h(Checkbox, { checked: verify, onChange: setVerify, label: '复核' }),
           ),
           h('span', { style: { flex: '1 1 auto' } }),
+          docText.length > 1500 && engine === 'llm'
+            ? h('span', { title: '精准模式逐段处理，长文档建议切「快速」引擎', style: { fontSize: 11, color: C.warn } },
+                '长文档 + 精准模式较慢，可分 ' + splitDoc(docText, 900).length + ' 段处理')
+            : null,
           docMs ? h('span', { style: { fontSize: 12, color: C.muted } }, docMs + ' ms') : null,
           sim !== null
             ? h(
@@ -3698,7 +3754,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.5.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.5.1'),
         ),
         h(
           'div',
