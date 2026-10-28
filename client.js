@@ -405,6 +405,8 @@ window.__ModuleLoader__.load({
       const [digest, setDigest] = React.useState({ loading: true, courses: [], fetchedAt: '', error: '' });
       const [expanded, setExpanded] = React.useState({});
       const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
+      const [editingCourse, setEditingCourse] = React.useState({});
+      const [showDone, setShowDone] = React.useState(false);
       const [timetable, setTimetable] = React.useState({ classes: [], loading: true, error: '' });
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
@@ -607,12 +609,37 @@ window.__ModuleLoader__.load({
             },
             item.name,
           ),
-          h(Field, {
-            value: item.url,
-            placeholder: '粘贴这门课的网址',
-            onChange: (value) => updateCourse(item.id, { url: value }),
-            style: { flex: '0 0 200px', height: 26, fontSize: 12 },
-          }),
+          editingCourse[item.id]
+            ? h(Field, {
+                value: item.url,
+                placeholder: '粘贴这门课的网址',
+                onChange: (value) => updateCourse(item.id, { url: value }),
+                style: { flex: '0 0 200px', height: 26, fontSize: 12 },
+              })
+            : null,
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () =>
+                setEditingCourse(function (prev) {
+                  var next = Object.assign({}, prev);
+                  next[item.id] = !next[item.id];
+                  return next;
+                }),
+              title: '修改这门课的网址',
+              style: {
+                border: 'none',
+                background: 'transparent',
+                color: C.muted,
+                cursor: 'pointer',
+                fontSize: 12,
+                padding: '0 4px',
+                flex: '0 0 auto',
+              },
+            },
+            '✎',
+          ),
           h(
             'a',
             {
@@ -719,6 +746,78 @@ window.__ModuleLoader__.load({
           ),
           h(
             Card,
+            {
+              title: '本周课表',
+              note: (function () {
+                if (timetable.loading) return '读取中…';
+                const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
+                const list = timetable.classes.filter(function (c) { return c.day === today; });
+                const now = new Date().toTimeString().slice(0, 5);
+                const next = list.filter(function (c) { return c.start >= now; })[0];
+                if (!list.length) return '今天没课';
+                return '今天 ' + list.length + ' 节' + (next ? ' · 下一节 ' + next.start + ' ' + next.course : ' · 今天已上完');
+              })(),
+              action: h(Button, { onClick: loadTimetable }, '刷新'),
+            },
+            timetable.error
+              ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, timetable.error)
+              : h(
+                  'div',
+                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  [1, 2, 3, 4, 5, 6, 7].map(function (day) {
+                    const list = timetable.classes
+                      .filter(function (c) { return c.day === day; })
+                      .sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+                    if (!list.length) return null;
+                    const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
+                    const isToday = day === today;
+                    const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+                    return h(
+                      'div',
+                      {
+                        key: day,
+                        style: {
+                          display: 'flex',
+                          gap: 10,
+                          alignItems: 'flex-start',
+                          padding: '7px 10px',
+                          borderRadius: 8,
+                          border: '1px solid ' + (isToday ? 'var(--dsw-alias-brand-primary)' : C.border),
+                          background: C.base,
+                        },
+                      },
+                      h(
+                        'span',
+                        {
+                          style: {
+                            flex: '0 0 42px',
+                            fontSize: 12,
+                            fontWeight: isToday ? 700 : 500,
+                            color: isToday ? C.text : C.muted,
+                          },
+                        },
+                        names[day],
+                      ),
+                      h(
+                        'div',
+                        { style: { display: 'flex', flexDirection: 'column', gap: 3, flex: '1 1 auto', minWidth: 0 } },
+                        list.map(function (c, index) {
+                          return h(
+                            'div',
+                            { key: index, style: { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
+                            h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, c.start + '–' + c.end),
+                            h('span', { style: { fontSize: 13, fontWeight: 600 } }, c.course),
+                            h('span', { style: { fontSize: 12, color: C.muted } }, c.kind),
+                            h('span', { style: { fontSize: 12, color: C.muted } }, '· ' + c.room),
+                          );
+                        }),
+                      ),
+                    );
+                  }),
+                ),
+          ),
+          h(
+            Card,
             { title: '我的课程', note: 'UCSI' + ' · 共 ' + state.courses.length + ' 门 · 点「打开」直达' },
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } }, courseRows),
             h(
@@ -758,7 +857,15 @@ window.__ModuleLoader__.load({
               ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, '点「刷新」拉取一次课程数据。')
               : h(
                   'div',
-                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      maxHeight: 280,
+                      overflowY: 'auto',
+                    },
+                  },
                   digest.courses.map(function (course) {
                     const open = !!expanded[course.name];
                     return h(
@@ -856,83 +963,24 @@ window.__ModuleLoader__.load({
           h(
             Card,
             {
-              title: '本周课表',
-              note: (function () {
-                if (timetable.loading) return '读取中…';
-                const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
-                const list = timetable.classes.filter(function (c) { return c.day === today; });
-                const now = new Date().toTimeString().slice(0, 5);
-                const next = list.filter(function (c) { return c.start >= now; })[0];
-                if (!list.length) return '今天没课';
-                return '今天 ' + list.length + ' 节' + (next ? ' · 下一节 ' + next.start + ' ' + next.course : ' · 今天已上完');
-              })(),
-              action: h(Button, { onClick: loadTimetable }, '刷新'),
-            },
-            timetable.error
-              ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, timetable.error)
-              : h(
-                  'div',
-                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-                  [1, 2, 3, 4, 5, 6, 7].map(function (day) {
-                    const list = timetable.classes
-                      .filter(function (c) { return c.day === day; })
-                      .sort(function (a, b) { return a.start < b.start ? -1 : 1; });
-                    if (!list.length) return null;
-                    const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
-                    const isToday = day === today;
-                    const names = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-                    return h(
-                      'div',
-                      {
-                        key: day,
-                        style: {
-                          display: 'flex',
-                          gap: 10,
-                          alignItems: 'flex-start',
-                          padding: '7px 10px',
-                          borderRadius: 8,
-                          border: '1px solid ' + (isToday ? 'var(--dsw-alias-brand-primary)' : C.border),
-                          background: C.base,
-                        },
-                      },
-                      h(
-                        'span',
-                        {
-                          style: {
-                            flex: '0 0 42px',
-                            fontSize: 12,
-                            fontWeight: isToday ? 700 : 500,
-                            color: isToday ? C.text : C.muted,
-                          },
-                        },
-                        names[day],
-                      ),
-                      h(
-                        'div',
-                        { style: { display: 'flex', flexDirection: 'column', gap: 3, flex: '1 1 auto', minWidth: 0 } },
-                        list.map(function (c, index) {
-                          return h(
-                            'div',
-                            { key: index, style: { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
-                            h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, c.start + '–' + c.end),
-                            h('span', { style: { fontSize: 13, fontWeight: 600 } }, c.course),
-                            h('span', { style: { fontSize: 12, color: C.muted } }, c.kind),
-                            h('span', { style: { fontSize: 12, color: C.muted } }, '· ' + c.room),
-                          );
-                        }),
-                      ),
-                    );
-                  }),
-                ),
-          ),
-          h(
-            Card,
-            {
               title: '课程待办',
               note: plan.loading
                 ? '读取中…'
                 : plan.items.filter(function (i) { return !i.done; }).length + ' 项未完成',
-              action: h(Button, { onClick: loadPlan }, '刷新'),
+              action: h(
+                'div',
+                { style: { display: 'flex', gap: 6 } },
+                h(
+                  Button,
+                  {
+                    onClick: function () {
+                      setShowDone(!showDone);
+                    },
+                  },
+                  showDone ? '只看未完成' : '显示已完成（' + plan.items.filter(function (i) { return i.done; }).length + '）',
+                ),
+                h(Button, { onClick: loadPlan }, '刷新'),
+              ),
             },
             plan.error
               ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, plan.error)
@@ -942,7 +990,7 @@ window.__ModuleLoader__.load({
               : h(
                   'div',
                   { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-                  plan.items.slice().sort(function (a, b) {
+                  plan.items.filter(function (i) { return showDone || !i.done; }).sort(function (a, b) {
                     if (!a.due && !b.due) return 0;
                     if (!a.due) return 1;
                     if (!b.due) return -1;
@@ -957,7 +1005,7 @@ window.__ModuleLoader__.load({
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: 8,
-                          padding: '7px 10px',
+                          padding: '5px 9px',
                           borderRadius: 8,
                           border: '1px solid ' + (overdue ? 'var(--dsw-alias-state-error-primary)' : C.border),
                           background: C.base,
@@ -1015,7 +1063,7 @@ window.__ModuleLoader__.load({
                                       textDecoration: 'none',
                                     },
                                   },
-                                  entry.lang === 'zh' ? '中文版' : '英文版',
+                                  entry.lang === 'zh' ? '中文' : 'EN',
                                 );
                               }),
                               item.url
