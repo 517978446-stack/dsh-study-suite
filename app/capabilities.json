@@ -1,0 +1,27 @@
+{
+  "_comment": "平台能力矩阵的唯一来源。改能力先改这里，再同步 README 的表格与安装脚本文案。",
+  "windows": {
+    "panel": true,
+    "fastTranslate": true,
+    "aiDetect": true,
+    "imageOcr": true,
+    "pdfOcr": true,
+    "asr": "partial",
+    "llm": "optional-http",
+    "speakerDiarization": false,
+    "reminder": true,
+    "watchdog": true
+  },
+  "macos": {
+    "panel": true,
+    "fastTranslate": true,
+    "aiDetect": true,
+    "imageOcr": true,
+    "pdfOcr": true,
+    "asr": "full",
+    "llm": "mlx",
+    "speakerDiarization": true,
+    "reminder": false,
+    "watchdog": false
+  }
+}

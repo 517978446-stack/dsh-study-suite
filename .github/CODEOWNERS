@@ -1,0 +1,22 @@
+# 谁负责哪一块
+#
+# Windows 和 macOS 的适配各自独立维护，改一边不该碰另一边：
+#   app/platform/windows/  → Windows 维护者
+#   app/platform/macos/    → macOS 维护者
+#   app/service/           → 共享核心，两边都要 review
+#
+# 只有一个维护者时，把下面两行都改成同一个账号即可；
+# 两个人时分别填各自的 GitHub 用户名。
+
+# 共享核心：改这里影响两个平台，需要双方确认
+/app/service/            @517978446-stack
+
+# Windows 专属
+/app/platform/windows/   @517978446-stack
+
+# macOS 专属
+/app/platform/macos/     @517978446-stack
+
+# 打包、CI、发布流程
+/dev/                    @517978446-stack
+/.github/                @517978446-stack
