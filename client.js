@@ -518,6 +518,17 @@ window.__ModuleLoader__.load({
       const [showDone, setShowDone] = React.useState(false);
       const [filters, setFilters] = React.useState({});
       const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
+      const [refreshing, setRefreshing] = React.useState(false);
+      const [cnLoggedAt, setCnLoggedAt] = React.useState(function () {
+        try {
+          const raw = window.localStorage.getItem('dsh-study-cn-login');
+          const at = raw ? Number(raw) : 0;
+          return Date.now() - at < 7 * 86400000 ? at : 0;
+        } catch (err) {
+          return 0;
+        }
+      });
+      const [updatedAt, setUpdatedAt] = React.useState('');
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
       const [frontDraft, setFrontDraft] = React.useState('');
@@ -586,13 +597,17 @@ window.__ModuleLoader__.load({
           .catch(function () { setFilters({}); });
       }, []);
 
-      async function loadPlan() {
+      async function loadPlan(manual) {
+        if (manual) setRefreshing(true);
         try {
-          const response = await fetch(ENGINE + '/plan', { cache: 'no-store' });
+          const response = await fetch(ENGINE + '/plan?t=' + Date.now(), { cache: 'no-store' });
           const data = await response.json();
           setPlan({ items: data.items || [], loading: false, error: '' });
+          if (manual) setUpdatedAt(new Date().toTimeString().slice(0, 8));
         } catch (err) {
           setPlan({ items: [], loading: false, error: '读不到课程待办' });
+        } finally {
+          if (manual) setTimeout(function () { setRefreshing(false); }, 600);
         }
       }
 
@@ -989,10 +1004,25 @@ window.__ModuleLoader__.load({
                 href: 'https://www.thecn.com/',
                 target: '_blank',
                 rel: 'noreferrer',
-                title: 'CN 的登录是浏览器 cookie，服务里的凭证只用于后台抓取；在这里登录一次即可',
-                style: Object.assign(pillStyle(false), { height: 28 }),
+                onClick: function () {
+                  const now = Date.now();
+                  setCnLoggedAt(now);
+                  try {
+                    window.localStorage.setItem('dsh-study-cn-login', String(now));
+                  } catch (err) {
+                    /* 隐私模式忽略 */
+                  }
+                },
+                title: cnLoggedAt
+                  ? '已登录 CN（浏览器 cookie 有效期内）。再点一次会重新打开 CN 页面'
+                  : 'CN 的登录是浏览器 cookie；在这里登录一次，此后课程可直接打开',
+                style: Object.assign(pillStyle(false), {
+                  height: 28,
+                  color: cnLoggedAt ? C.accent : C.text,
+                  borderColor: cnLoggedAt ? C.accent : C.border,
+                }),
               },
-              '登录 CN',
+              cnLoggedAt ? '✓ CN 已登录' : '登录 CN',
             ),
             h(
               'a',
@@ -1030,7 +1060,8 @@ window.__ModuleLoader__.load({
               title: '课程待办',
               note: plan.loading
                 ? '读取中…'
-                : plan.items.filter(function (i) { return !i.done; }).length + ' 项未完成',
+                : plan.items.filter(function (i) { return !i.done; }).length + ' 项未完成' +
+                  (refreshing ? ' · 刷新中…' : updatedAt ? ' · 已更新 ' + updatedAt : ''),
               action: h(
                 'div',
                 { style: { display: 'flex', gap: 6 } },
@@ -1043,7 +1074,7 @@ window.__ModuleLoader__.load({
                   },
                   showDone ? '只看未完成' : '显示已完成（' + plan.items.filter(function (i) { return i.done; }).length + '）',
                 ),
-                h(Button, { onClick: loadPlan }, '刷新'),
+                h(Button, { onClick: function () { loadPlan(true); } }, refreshing ? '刷新中…' : '刷新'),
               ),
             },
             plan.error
@@ -1122,59 +1153,65 @@ window.__ModuleLoader__.load({
                                   ? item.docs
                                   : (item.doc ? [{ lang: 'en', path: item.doc }] : []);
                                 const enDoc = list.find(function (d) { return d.lang === 'en'; });
-                                const zhDoc = list.find(function (d) { return d.lang === 'zh'; });
-                                if (!enDoc || !zhDoc) return null;
-                                return h(
-                                  'a',
-                                  {
-                                    href: ENGINE + '/reading?path=' + encodeURIComponent(enDoc.path),
-                                    target: '_blank',
-                                    rel: 'noreferrer',
-                                    title: '完整原文 + 每段下方中文翻译',
-                                    style: {
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      height: 22,
-                                      padding: '0 9px',
-                                      borderRadius: 11,
-                                      border: '1px solid ' + C.accent,
-                                      background: C.accent,
-                                      color: readableOn(C.accent),
-                                      fontSize: 11,
-                                      fontWeight: 600,
-                                      textDecoration: 'none',
-                                    },
-                                  },
-                                  '中英对照',
-                                );
+                                const sourceDoc = list.find(function (d) { return d.lang === 'source'; });
+                                const readDoc = enDoc || sourceDoc;
+                                const chips = [];
+                                if (readDoc) {
+                                  chips.push(
+                                    h(
+                                      'a',
+                                      {
+                                        key: 'read',
+                                        href: ENGINE + '/reading?path=' + encodeURIComponent(readDoc.path),
+                                        target: '_blank',
+                                        rel: 'noreferrer',
+                                        title: '完整原文，每段下方是中文翻译',
+                                        style: {
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          height: 22,
+                                          padding: '0 9px',
+                                          borderRadius: 11,
+                                          border: '1px solid ' + C.accent,
+                                          background: C.accent,
+                                          color: readableOn(C.accent),
+                                          fontSize: 11,
+                                          fontWeight: 600,
+                                          textDecoration: 'none',
+                                        },
+                                      },
+                                      '中英对照',
+                                    ),
+                                  );
+                                }
+                                if (sourceDoc) {
+                                  chips.push(
+                                    h(
+                                      'a',
+                                      {
+                                        key: 'source',
+                                        href: ENGINE + '/file?path=' + encodeURIComponent(sourceDoc.path),
+                                        target: '_blank',
+                                        rel: 'noreferrer',
+                                        title: sourceDoc.path,
+                                        style: {
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          height: 22,
+                                          padding: '0 9px',
+                                          borderRadius: 11,
+                                          border: '1px solid ' + C.border,
+                                          color: C.text,
+                                          fontSize: 11,
+                                          textDecoration: 'none',
+                                        },
+                                      },
+                                      'CN原件',
+                                    ),
+                                  );
+                                }
+                                return chips;
                               })(),
-                              (item.docs && item.docs.length
-                                ? item.docs
-                                : (item.doc ? [{ lang: 'en', path: item.doc }] : [])
-                              ).map(function (entry, docIndex) {
-                                return h(
-                                  'a',
-                                  {
-                                    key: docIndex,
-                                    href: ENGINE + '/file?path=' + encodeURIComponent(entry.path),
-                                    target: '_blank',
-                                    rel: 'noreferrer',
-                                    title: entry.path,
-                                    style: {
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      height: 22,
-                                      padding: '0 8px',
-                                      borderRadius: 11,
-                                      border: '1px solid ' + C.border,
-                                      color: C.text,
-                                      fontSize: 11,
-                                      textDecoration: 'none',
-                                    },
-                                  },
-                                  entry.lang === 'zh' ? '中文' : entry.lang === 'source' ? 'CN原件' : 'EN',
-                                );
-                              }),
                               item.url
                                 ? h(
                                     'a',
@@ -2941,7 +2978,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.5.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.6.0'),
         ),
         h(
           'div',
