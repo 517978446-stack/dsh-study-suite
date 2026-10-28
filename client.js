@@ -558,6 +558,9 @@ window.__ModuleLoader__.load({
       }
       const cards = state.cards;
       const active = cards.length ? cards[((cardIndex % cards.length) + cards.length) % cards.length] : null;
+      const visibleCourses = state.courses.filter(function (c) {
+        return showHidden || hiddenCourses.indexOf(c.name) === -1;
+      });
       const linked = visibleCourses.filter((item) => item.url).length;
 
       async function loadDigest() {
@@ -703,9 +706,6 @@ window.__ModuleLoader__.load({
         setRevealed(false);
       }
 
-      const visibleCourses = state.courses.filter(function (c) {
-        return showHidden || hiddenCourses.indexOf(c.name) === -1;
-      });
       const courseRows = visibleCourses.map((item) => {
         const info = digest.courses.find(function (c) { return c.name === item.name; }) || null;
         const open = !!expanded[item.name];
@@ -3030,6 +3030,47 @@ window.__ModuleLoader__.load({
       return { Panel: DetectPanel };
     })();
 
+    class PanelErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { error: error };
+      }
+      render() {
+        if (!this.state.error) {
+          return this.props.children;
+        }
+        return React.createElement(
+          'div',
+          { style: { padding: '24px 28px', fontFamily: 'inherit' } },
+          React.createElement('h2', { style: { margin: '0 0 8px', fontSize: 16 } }, '这个页面出错了'),
+          React.createElement(
+            'p',
+            { style: { margin: '0 0 12px', fontSize: 13, color: '#6b7280' } },
+            '换一个标签还能继续用。把下面这段发给开发者即可定位。',
+          ),
+          React.createElement(
+            'pre',
+            {
+              style: {
+                padding: '12px 14px',
+                borderRadius: 8,
+                background: 'rgba(127,127,127,0.10)',
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: 240,
+                overflow: 'auto',
+              },
+            },
+            String((this.state.error && this.state.error.stack) || this.state.error),
+          ),
+        );
+      }
+    }
+
     function Suite() {
       const scheme = useAppColorScheme();
       const [tab, setTab] = React.useState('study');
@@ -3067,18 +3108,22 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.0.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.1.1'),
         ),
         h(
           'div',
           { style: { flex: '1 1 auto', minHeight: 0, overflow: 'hidden' } },
-          tab === 'study'
-            ? h(StudyModules.Panel)
-            : tab === 'tt'
-              ? h(StudyModules.Timetable)
-              : tab === 'interp'
-                ? h(InterpreterModules.Panel)
-                : h(DetectModules.Panel),
+          h(
+            PanelErrorBoundary,
+            { key: tab },
+            tab === 'study'
+              ? h(StudyModules.Panel)
+              : tab === 'tt'
+                ? h(StudyModules.Timetable)
+                : tab === 'interp'
+                  ? h(InterpreterModules.Panel)
+                  : h(DetectModules.Panel),
+          ),
         ),
       );
     }
