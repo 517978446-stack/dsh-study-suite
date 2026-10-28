@@ -561,6 +561,13 @@ window.__ModuleLoader__.load({
       const [panelModal, setPanelModal] = React.useState(null);
       const [checkTarget, setCheckTarget] = React.useState('');
       const checkFileRef = React.useRef(null);
+      const modalTokenRef = React.useRef(0);
+
+      function closeModal() {
+        // 关闭时作废当前请求：否则结果回来会把面板重新打开
+        modalTokenRef.current += 1;
+        setPanelModal(null);
+      }
       const [showDone, setShowDone] = React.useState(false);
       const [filters, setFilters] = React.useState({});
       const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
@@ -1059,6 +1066,7 @@ window.__ModuleLoader__.load({
       );
 
       async function openBrief(item, path) {
+        const token = ++modalTokenRef.current;
         setPanelModal({ type: 'brief', item: item, loading: true, data: null, error: '' });
         try {
           const response = await fetch(ENGINE + '/brief', {
@@ -1067,15 +1075,19 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ path: path }),
           });
           const data = await response.json();
+          if (token !== modalTokenRef.current) return;
           if (!response.ok) throw new Error(data.error || '提炼失败');
           setPanelModal({ type: 'brief', item: item, loading: false, data: data, error: '' });
         } catch (err) {
+          if (token !== modalTokenRef.current) return;
           setPanelModal({ type: 'brief', item: item, loading: false, data: null, error: err.message });
         }
       }
 
       async function checkFile(file) {
-        setPanelModal({ type: 'check', item: panelModal && panelModal.item, loading: true, data: null, error: '' });
+        const token = ++modalTokenRef.current;
+        const currentItem = panelModal && panelModal.item;
+        setPanelModal({ type: 'check', item: currentItem, loading: true, data: null, error: '' });
         try {
           const buffer = await file.arrayBuffer();
           const response = await fetch(
@@ -1090,14 +1102,17 @@ window.__ModuleLoader__.load({
             },
           );
           const data = await response.json();
+          if (token !== modalTokenRef.current) return;
           if (!response.ok) throw new Error(data.error || '检查失败');
-          setPanelModal({ type: 'check', item: panelModal && panelModal.item, loading: false, data: data, error: '' });
+          setPanelModal({ type: 'check', item: currentItem, loading: false, data: data, error: '' });
         } catch (err) {
-          setPanelModal({ type: 'check', item: panelModal && panelModal.item, loading: false, data: null, error: err.message });
+          if (token !== modalTokenRef.current) return;
+          setPanelModal({ type: 'check', item: currentItem, loading: false, data: null, error: err.message });
         }
       }
 
       async function openCheck(item, path, target) {
+        const token = ++modalTokenRef.current;
         setPanelModal({ type: 'check', item: item, loading: true, data: null, error: '' });
         try {
           const response = await fetch(ENGINE + '/check', {
@@ -1106,9 +1121,11 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ path: path, targetWords: target ? [Number(target), null] : null }),
           });
           const data = await response.json();
+          if (token !== modalTokenRef.current) return;
           if (!response.ok) throw new Error(data.error || '检查失败');
           setPanelModal({ type: 'check', item: item, loading: false, data: data, error: '' });
         } catch (err) {
+          if (token !== modalTokenRef.current) return;
           setPanelModal({ type: 'check', item: item, loading: false, data: null, error: err.message });
         }
       }
@@ -1202,12 +1219,12 @@ window.__ModuleLoader__.load({
         return h('div', {
           style: {
             position: 'fixed', inset: 0,
-            // 完全不透明的背景板：不用 rgba，避免还能看见后面的文字
-            background: '#0e1014',
+            // 框外正常变暗（半透明遮罩），框内卡片是实色，能完全盖住下方内容
+            background: 'rgba(0,0,0,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
             padding: 16,
           },
-          onClick: () => setPanelModal(null),
+          onClick: closeModal,
         },
           h('div', {
             onClick: (event) => event.stopPropagation(),
@@ -1228,7 +1245,7 @@ window.__ModuleLoader__.load({
                 (panelModal.item && panelModal.item.title) || ''),
               h('button', {
                 type: 'button',
-                onClick: () => setPanelModal(null),
+                onClick: closeModal,
                 style: { border: 'none', background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: 16 },
               }, '×')),
             body));
@@ -4192,7 +4209,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.2'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.3'),
         ),
         h(
           'div',
