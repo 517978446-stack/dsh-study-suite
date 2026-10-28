@@ -29,12 +29,12 @@ expect_clean() {    # 名称 内容
 }
 
 echo "隐私检查回归："
-expect_report "Windows 单反斜杠路径" 'p = "C:\Users\alice\x.txt"'        "Windows 绝对路径"
-expect_report "Windows 双反斜杠路径" 'p = "C:\\\\Users\\\\alice\\\\x"'  "Windows 绝对路径"
-expect_report "Windows 正斜杠路径"   'p = "C:/Users/alice/x.txt"'        "Windows 绝对路径"
-expect_report "macOS 路径"           'p = /Users/alice/x.txt'            "macOS 绝对路径"
-expect_report "学号（中文语境）"      '学号: 1002580997'                  "学号"
-expect_report "学号（student_id）"   'student_id = 1002580997'           "学号"
+expect_report "Windows 单反斜杠路径" 'p = "C:\Users\alice\x.txt"'        "Windows 绝对路径"  # privacy:ignore
+expect_report "Windows 双反斜杠路径" 'p = "C:\\\\Users\\\\alice\\\\x"'  "Windows 绝对路径"  # privacy:ignore
+expect_report "Windows 正斜杠路径"   'p = "C:/Users/alice/x.txt"'        "Windows 绝对路径"  # privacy:ignore
+expect_report "macOS 路径"           'p = /Users/alice/x.txt'            "macOS 绝对路径"  # privacy:ignore
+expect_report "学号（中文语境）"      '学号: 1002580997'                  "学号"  # privacy:ignore
+expect_report "学号（student_id）"   'student_id = 1002580997'           "学号"  # privacy:ignore
 expect_clean  "Unix 时间戳"          'ts = 1793168346'
 expect_clean  "时间戳数组"           'created = [1700000000, 1793168346]'
 expect_clean  "普通十位数字无语境"    'id = 9999999999'

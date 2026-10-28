@@ -94,7 +94,7 @@ python3 "$HOME/.dsh-study-suite/smoke.py"
 
 | 检查项 | 例子 |
 |---|---|
-| macOS / Windows 家目录路径 | `/Users/…`、`C:\Users\…`（单反斜杠或转义后的双反斜杠都算） |
+| macOS / Windows 家目录路径 | `/Users/…`、`C:\Users\…`（单反斜杠或转义后的双反斜杠都算） |  <!-- privacy:ignore -->
 | 个人工作区目录名 | 本机工作目录的名字 |
 | 个人邮箱 | `@ucsiuniversity` / `@gmail` 等 |
 | 学号 | 十位数字，且同行为「学号 / student_id / matric」语境（避免把 Unix 时间戳当学号） |
