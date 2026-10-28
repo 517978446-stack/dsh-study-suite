@@ -1,5 +1,18 @@
 # 更新日志
 
+## 7.12.0 — 2026-10-29
+
+**CN 登录不再需要 F12**
+
+- 新增 `POST /cn/login`：服务端用 Playwright 启动**系统 Edge**（`channel="msedge"`，不下载
+  chromium），用户在弹窗里正常登录，服务端轮询 `localStorage.cn_token`，拿到后自动关窗
+- 处理登录过程中的页面跳转：`Execution context was destroyed` 不再被误判成「窗口关闭」
+- 多标签页轮询，登录后跳新标签也能读到
+- 新增 `POST /cn/logout`：删掉本地保存的 token 与课程缓存，面板上多一个「退出」按钮
+- 面板登录弹窗顶部加「一键登录（推荐）」，原来的 F12 手动流程保留作为备用
+
+依赖变化：`install.ps1` 与 `install.sh` 的 pip 列表加 `playwright`（约 30 MB，复用系统浏览器）
+
 ## 7.11.0 — 2026-10-29
 
 **Windows 补齐三块原本只有 macOS 才有的能力**

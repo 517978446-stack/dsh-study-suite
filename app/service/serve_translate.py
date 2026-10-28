@@ -831,6 +831,67 @@ def check_text(text, name, target_words=None, pattern=""):
 
 
 
+def cn_login_browser(timeout=300):
+    """弹出系统 Edge 让用户登录 CN，读 localStorage 里的 cn_token。
+
+    用 playwright 的 channel="msedge" 复用系统浏览器，不下载 chromium。
+    登录过程中页面会跳转（登录页 -> 首页），evaluate 会抛 "Execution context was destroyed"，
+    这不是窗口关闭——所以要先判断浏览器连接是否还在，再决定继续还是退出。
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as err:
+        raise BadRequest("没有安装 playwright（%s）。可以手动粘贴 token，或 pip install playwright 后重试。" % err)
+
+    token = ""
+    closed = False
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(channel="msedge", headless=False)
+            try:
+                context = browser.new_context()
+                page = context.new_page()
+                try:
+                    page.goto("https://www.thecn.com/", wait_until="domcontentloaded", timeout=60000)
+                except Exception:
+                    pass  # 首次打开慢一点没关系，继续轮询
+
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    if not browser.is_connected():
+                        closed = True
+                        break
+                    for tab in context.pages:
+                        try:
+                            value = tab.evaluate("localStorage.getItem('cn_token') || ''")
+                        except Exception:
+                            continue  # 这个标签正在导航，换下一个 / 下一轮
+                        if value:
+                            token = value
+                            break
+                    if token:
+                        break
+                    time.sleep(0.8)
+            finally:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+    except BadRequest:
+        raise
+    except Exception as err:
+        raise BadRequest("启动浏览器失败：%s" % err)
+
+    if not token:
+        if closed:
+            raise BadRequest("窗口被关闭了，登录取消")
+        raise BadRequest("等了 %d 秒还没登录成功，已取消" % timeout)
+
+    name = cn_verify_token(token)
+    cn_save_token(token)
+    return name
+
+
 def cn_verify_token(token):
     """Call /api/me/ with this token before saving it.
 
@@ -2569,7 +2630,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         known = ("/translate", "/translate/batch", "/asr", "/minutes", "/summary", "/extract",
-                 "/brief", "/check", "/cn/token",
+                 "/brief", "/check", "/cn/token", "/cn/login", "/cn/logout",
                  "/hidden/toggle",
                  "/aidetect", "/digest/refresh", "/release", "/plan/toggle")
         if route not in known:
@@ -2577,6 +2638,30 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         route_path = self.path.split("?")[0].rstrip("/")
+
+        if route_path.endswith("/cn/logout"):
+            try:
+                removed = []
+                for name in ("cn-state.json", "cn-digest.json"):
+                    path = os.path.join(SECRETS_DIR, name)
+                    if os.path.exists(path):
+                        os.remove(path)
+                        removed.append(name)
+                self._json({"ok": True, "removed": removed})
+            except Exception as err:
+                self._json({"ok": False, "error": str(err)}, 500)
+            return
+
+        if route_path.endswith("/cn/login"):
+            started = time.time()
+            try:
+                name = cn_login_browser()
+                self._json({"ok": True, "name": name, "ms": round((time.time() - started) * 1000)})
+            except BadRequest as err:
+                self._json({"ok": False, "error": str(err)}, 400)
+            except Exception as err:
+                self._json({"ok": False, "error": str(err)}, 500)
+            return
 
         if route_path.endswith("/cn/token"):
             try:

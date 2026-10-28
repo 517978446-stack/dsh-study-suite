@@ -1193,6 +1193,35 @@ window.__ModuleLoader__.load({
           body.push(h('p', { key: 'e', style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-state-error-primary)' } },
             panelModal.error));
         } else if (panelModal.type === 'cnlogin') {
+          body.push(h('button', {
+            key: 'oneclick',
+            type: 'button',
+            onClick: async function () {
+              setPanelModal(function (p) { return Object.assign({}, p, { error: '' }) })
+              try {
+                const r = await fetch(ENGINE + '/cn/login', { method: 'POST' })
+                const d = await r.json()
+                if (d && d.ok) {
+                  setCnLoggedAt(Date.now())
+                  try { window.localStorage.setItem('dsh-study-cn-login', String(Date.now())) } catch (err) {}
+                  closeModal()
+                  await refreshDigest()
+                  await loadPlan()
+                } else {
+                  setPanelModal(function (p) {
+                    return Object.assign({}, p, { error: (d && d.error) || '一键登录失败' })
+                  })
+                }
+              } catch (err) {
+                setPanelModal(function (p) {
+                  return Object.assign({}, p, { error: String((err && err.message) || err) })
+                })
+              }
+            },
+            style: Object.assign({}, pillStyle(false), {
+              padding: '8px 14px', alignSelf: 'flex-start', fontWeight: 600,
+            }),
+          }, '一键登录（推荐）'))
           if (panelModal.error) {
             body.push(h('p', { key: 'err', style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } },
               panelModal.error));
@@ -1444,6 +1473,32 @@ window.__ModuleLoader__.load({
               },
               cnLoggedAt ? '✓ CN 已登录' : '登录 CN',
             ),
+            cnLoggedAt
+              ? h(
+                  'button',
+                  {
+                    key: 'cnlogout',
+                    type: 'button',
+                    onClick: async function () {
+                      try {
+                        await fetch(ENGINE + '/cn/logout', { method: 'POST' })
+                      } catch (err) {}
+                      setCnLoggedAt(null)
+                      setDigest({ loading: false, courses: [], fetchedAt: '', error: '' })
+                      try {
+                        window.localStorage.removeItem('dsh-study-cn-login')
+                      } catch (err) {}
+                    },
+                    title: '退出 CN 登录：删掉本机保存的 token 与课程缓存',
+                    style: Object.assign(pillStyle(false), {
+                      height: 28,
+                      cursor: 'pointer',
+                      color: C.muted,
+                    }),
+                  },
+                  '退出',
+                )
+              : null,
             h(
               'a',
               {

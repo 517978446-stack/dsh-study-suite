@@ -144,7 +144,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 # ---- OCR 依赖（图片 / 扫描件 PDF）----
 Write-Host "== 安装 OCR 依赖"
-& $Py @PyArgs -m pip install --quiet --upgrade --target $Pylibs rapidocr_onnxruntime pymupdf wordninja
+& $Py @PyArgs -m pip install --quiet --upgrade --target $Pylibs rapidocr_onnxruntime pymupdf wordninja playwright
 if ($LASTEXITCODE -ne 0) {
   Write-Host "OCR 依赖安装失败：图片和扫描件识别不可用（翻译、检测不受影响）"
 }
