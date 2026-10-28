@@ -1,0 +1,16 @@
+name: 检查脚本编码与行尾
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  encoding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: .ps1 必须有 BOM，.cmd/.vbs 必须是 CRLF
+        run: python3 dev/check-encoding.py .

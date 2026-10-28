@@ -3177,7 +3177,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.1.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.1.1'),
         ),
         h(
           'div',
