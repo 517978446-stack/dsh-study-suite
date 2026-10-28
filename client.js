@@ -558,6 +558,9 @@ window.__ModuleLoader__.load({
       const [plan, setPlan] = React.useState({ items: [], loading: true, error: '' });
       const [editingCourse, setEditingCourse] = React.useState({});
       const [readingJobs, setReadingJobs] = React.useState({});
+      const [panelModal, setPanelModal] = React.useState(null);
+      const [checkTarget, setCheckTarget] = React.useState('');
+      const checkFileRef = React.useRef(null);
       const [showDone, setShowDone] = React.useState(false);
       const [filters, setFilters] = React.useState({});
       const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
@@ -1055,6 +1058,176 @@ window.__ModuleLoader__.load({
         ),
       );
 
+      async function openBrief(item, path) {
+        setPanelModal({ type: 'brief', item: item, loading: true, data: null, error: '' });
+        try {
+          const response = await fetch(ENGINE + '/brief', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: path }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '提炼失败');
+          setPanelModal({ type: 'brief', item: item, loading: false, data: data, error: '' });
+        } catch (err) {
+          setPanelModal({ type: 'brief', item: item, loading: false, data: null, error: err.message });
+        }
+      }
+
+      async function checkFile(file) {
+        setPanelModal({ type: 'check', item: panelModal && panelModal.item, loading: true, data: null, error: '' });
+        try {
+          const buffer = await file.arrayBuffer();
+          const response = await fetch(
+            ENGINE + '/check' + (checkTarget ? '?targetWords=' + encodeURIComponent(checkTarget) : ''),
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/octet-stream',
+                'x-filename': encodeURIComponent(file.name),
+              },
+              body: buffer,
+            },
+          );
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '检查失败');
+          setPanelModal({ type: 'check', item: panelModal && panelModal.item, loading: false, data: data, error: '' });
+        } catch (err) {
+          setPanelModal({ type: 'check', item: panelModal && panelModal.item, loading: false, data: null, error: err.message });
+        }
+      }
+
+      async function openCheck(item, path, target) {
+        setPanelModal({ type: 'check', item: item, loading: true, data: null, error: '' });
+        try {
+          const response = await fetch(ENGINE + '/check', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: path, targetWords: target ? [Number(target), null] : null }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '检查失败');
+          setPanelModal({ type: 'check', item: item, loading: false, data: data, error: '' });
+        } catch (err) {
+          setPanelModal({ type: 'check', item: item, loading: false, data: null, error: err.message });
+        }
+      }
+
+      function renderModal() {
+        if (!panelModal) return null;
+        const data = panelModal.data || {};
+        const body = [];
+        if (panelModal.loading) {
+          body.push(h('p', { key: 'l', style: { margin: 0, fontSize: 13, color: C.muted } },
+            panelModal.type === 'brief' ? '正在读这份说明（首次约 10 秒）…' : '正在检查…'));
+        } else if (panelModal.error) {
+          body.push(h('p', { key: 'e', style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-state-error-primary)' } },
+            panelModal.error));
+        } else if (panelModal.type === 'brief') {
+          body.push(h('div', { key: 'w', style: { fontSize: 13 } }, h('b', null, '字数要求：'), data['字数要求'] || '未说明'));
+          body.push(h('div', { key: 'f', style: { fontSize: 13 } }, h('b', null, '提交格式：'), data['提交格式'] || '未说明'));
+          const need = data['必须包含'] || [];
+          if (need.length) {
+            body.push(h('div', { key: 'n', style: { fontSize: 13 } }, h('b', null, '必须包含：'),
+              h('ul', { style: { margin: '4px 0 0', paddingLeft: 18 } },
+                need.map((line, i) => h('li', { key: i, style: { fontSize: 12, lineHeight: 1.6 } }, line)))));
+          }
+          const rubric = data['评分点'] || [];
+          if (rubric.length) {
+            body.push(h('div', { key: 'r', style: { fontSize: 13 } }, h('b', null, '评分点：'),
+              h('ul', { style: { margin: '4px 0 0', paddingLeft: 18 } },
+                rubric.map(function (row, i) {
+                  const name = (row && (row['项'] || row.criterion)) || '';
+                  const weight = (row && (row['占比'] || row.weight)) || '';
+                  return h('li', { key: i, style: { fontSize: 12, lineHeight: 1.6 } }, name + (weight ? ' · ' + weight : ''));
+                }))));
+          }
+          const notes = data['注意事项'] || [];
+          if (notes.length) {
+            body.push(h('div', { key: 't', style: { fontSize: 13 } }, h('b', null, '注意：'),
+              h('ul', { style: { margin: '4px 0 0', paddingLeft: 18 } },
+                notes.map((line, i) => h('li', { key: i, style: { fontSize: 12, lineHeight: 1.6, color: C.muted } }, line)))));
+          }
+        } else {
+          body.push(h('div', { key: 'u', style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+            h('input', {
+              type: 'file',
+              accept: '.docx,.pdf,.txt',
+              style: { display: 'none' },
+              ref: function (node) { checkFileRef.current = node; },
+              onChange: function (event) {
+                const file = event.target.files && event.target.files[0];
+                if (file) checkFile(file);
+                event.target.value = '';
+              },
+            }),
+            h('button', {
+              type: 'button',
+              onClick: function () { if (checkFileRef.current) checkFileRef.current.click(); },
+              style: Object.assign(pillStyle(true), { height: 26, fontSize: 11 }),
+            }, '选我的草稿检查'),
+            h('span', { style: { fontSize: 11, color: C.muted } }, '常用刚才那份说明自查？选你的成稿更准')));
+          body.push(h('div', { key: 't', style: { display: 'flex', gap: 6, alignItems: 'center' } },
+            h('span', { style: { fontSize: 12, color: C.muted } }, '目标字数'),
+            h('input', {
+              value: checkTarget,
+              onChange: (event) => setCheckTarget(event.target.value.replace(/[^0-9]/g, '')),
+              placeholder: '如 2000',
+              style: {
+                width: 90, height: 26, padding: '0 8px', fontSize: 12,
+                border: '1px solid ' + C.border, borderRadius: 6,
+                background: C.base, color: C.text, outline: 'none',
+              },
+            }),
+            h('button', {
+              type: 'button',
+              onClick: function () {
+                const item = panelModal.item || {};
+                const doc = item.doc || (item.docs && item.docs[0] && item.docs[0].path) || '';
+                openCheck(item, doc, checkTarget);
+              },
+              style: Object.assign(pillStyle(false), { height: 26, fontSize: 11 }),
+            }, '重新检查')));
+          body.push(h('ul', { key: 'i', style: { margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 } },
+            (data.issues || []).map(function (row, i) {
+              const color = row.level === 'ok' ? 'var(--dsw-alias-state-success-primary)'
+                : row.level === 'warn' ? 'var(--dsw-alias-state-warn-primary)' : C.muted;
+              return h('li', { key: i, style: { fontSize: 12, lineHeight: 1.6, color: color } }, row.text);
+            })));
+          if (data.aiRate !== null && data.aiRate !== undefined) {
+            body.push(h('div', { key: 'a', style: { fontSize: 12, color: C.muted } },
+              'AI 写作风险 ' + data.aiRate + '%' + (data.aiBand ? '（' + data.aiBand + '）' : '')));
+          }
+        }
+        return h('div', {
+          style: {
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+          },
+          onClick: () => setPanelModal(null),
+        },
+          h('div', {
+            onClick: (event) => event.stopPropagation(),
+            style: {
+              width: 'min(560px, 92vw)', maxHeight: '80vh', overflow: 'auto',
+              background: C.layer, color: C.text, border: '1px solid ' + C.border,
+              borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', gap: 10,
+              boxShadow: '0 18px 48px rgba(0,0,0,0.28)',
+            },
+          },
+            h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
+              h('span', { style: { fontSize: 15, fontWeight: 600 } },
+                panelModal.type === 'brief' ? '作业要点' : '提交前检查'),
+              h('span', { style: { fontSize: 12, color: C.muted, flex: '1 1 auto' } },
+                (panelModal.item && panelModal.item.title) || ''),
+              h('button', {
+                type: 'button',
+                onClick: () => setPanelModal(null),
+                style: { border: 'none', background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: 16 },
+              }, '×')),
+            body));
+      }
+
       return h(
         'div',
         {
@@ -1364,6 +1537,63 @@ window.__ModuleLoader__.load({
                                     })(),
                                   );
                                 }
+                                if (readDoc) {
+                                  chips.push(
+                                    h(
+                                      'button',
+                                      {
+                                        key: 'brief',
+                                        type: 'button',
+                                        onClick: function (event) {
+                                          event.stopPropagation();
+                                          openBrief(item, readDoc.path);
+                                        },
+                                        title: '用本地 7B 把这份英文说明提炼成中文要点（首次约 10 秒，之后走缓存）',
+                                        style: {
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          height: 22,
+                                          padding: '0 9px',
+                                          borderRadius: 11,
+                                          border: '1px solid ' + C.border,
+                                          background: 'transparent',
+                                          color: C.text,
+                                          fontSize: 11,
+                                          cursor: 'pointer',
+                                        },
+                                      },
+                                      '要点',
+                                    ),
+                                  );
+                                  chips.push(
+                                    h(
+                                      'button',
+                                      {
+                                        key: 'check',
+                                        type: 'button',
+                                        onClick: function (event) {
+                                          event.stopPropagation();
+                                          setCheckTarget('');
+                                          openCheck(item, readDoc.path, '');
+                                        },
+                                        title: '提交前自查：字数、引用、参考文献、文件名、AI 风险',
+                                        style: {
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          height: 22,
+                                          padding: '0 9px',
+                                          borderRadius: 11,
+                                          border: '1px solid ' + C.border,
+                                          background: 'transparent',
+                                          color: C.text,
+                                          fontSize: 11,
+                                          cursor: 'pointer',
+                                        },
+                                      },
+                                      '检查',
+                                    ),
+                                  );
+                                }
                                 if (sourceDoc) {
                                   chips.push(
                                     h(
@@ -1603,6 +1833,7 @@ window.__ModuleLoader__.load({
               ),
             ),
           ),
+          renderModal(),
           h(
             'p',
             { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.6 } },
@@ -3955,7 +4186,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.7.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.8.0'),
         ),
         h(
           'div',
