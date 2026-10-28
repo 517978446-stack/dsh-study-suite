@@ -84,40 +84,8 @@ window.__ModuleLoader__.load({
     const DEFAULT_LIST_URL = 'https://www.thecn.com/user';
     const ENGINE = 'http://127.0.0.1:8791';
 
-    const DEFAULT_COURSES = [
-      {
-        name: '2026-09_BLE3022_Effective Writing',
-        url: 'https://www.thecn.com/course/91755709/pathway/activity/6ad94a598fcca5b081081741',
-      },
-      {
-        name: '2026-09_MPU3232_Integriti dan Anti-Rasuah',
-        url: 'https://www.thecn.com/course/91758968/pathway/activity/6ab61772829463f40d0d7b03',
-      },
-      {
-        name: '2026-09_MPU3411_Extra-curricular Learning Experience 1',
-        url: 'https://www.thecn.com/course/91765515/pathway/intro',
-      },
-      {
-        name: '2026-09_MCC3122_Falsafah dan Isu Semasa (Micro-Credential)',
-        url: 'https://www.thecn.com/course/91758977/pathway/activity/6abca78846b5d4e5f0015b7a',
-      },
-      {
-        name: '2026-09_SM101_Introduction To Mass Communication',
-        url: 'https://www.thecn.com/course/91763204/pathway/activity/6acee3e696ce83447c09e0a8',
-      },
-      {
-        name: '2026-09_SM110_Visual Communication',
-        url: 'https://www.thecn.com/course/91763229/pathway/activity/6ace1ec11489d6553409e27b',
-      },
-      {
-        name: '2026-09_SM109_Basic Photography',
-        url: 'https://www.thecn.com/course/91763220/pathway/activity/6ab5f3204532e9a6fe019136',
-      },
-      {
-        name: '2026-09_SM112_Introduction To Public Speaking',
-        url: 'https://www.thecn.com/course/91763230/pathway/activity/6abcd3ae638fbcefc108874d',
-      },
-    ];
+    // 默认不带任何课程：用户的课表是个人数据，不能随插件分发给别人
+    const DEFAULT_COURSES = [];
 
     const DEFAULT_LINKS = [
       { label: 'The CN 课程', url: 'https://www.thecn.com' },
@@ -3209,7 +3177,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.8.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.8.2'),
         ),
         h(
           'div',
