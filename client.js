@@ -903,6 +903,57 @@ window.__ModuleLoader__.load({
                         item.note
                           ? h('span', { style: { fontSize: 11, color: C.muted } }, item.note)
                           : null,
+                        (item.doc || item.url)
+                          ? h(
+                              'div',
+                              { style: { display: 'flex', gap: 6, paddingTop: 2, flexWrap: 'wrap' } },
+                              item.doc
+                                ? h(
+                                    'a',
+                                    {
+                                      href: ENGINE + '/file?path=' + encodeURIComponent(item.doc),
+                                      target: '_blank',
+                                      rel: 'noreferrer',
+                                      title: item.doc,
+                                      style: {
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        height: 22,
+                                        padding: '0 8px',
+                                        borderRadius: 11,
+                                        border: '1px solid ' + C.border,
+                                        color: C.text,
+                                        fontSize: 11,
+                                        textDecoration: 'none',
+                                      },
+                                    },
+                                    '查看作业说明',
+                                  )
+                                : null,
+                              item.url
+                                ? h(
+                                    'a',
+                                    {
+                                      href: item.url,
+                                      target: '_blank',
+                                      rel: 'noreferrer',
+                                      style: {
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        height: 22,
+                                        padding: '0 8px',
+                                        borderRadius: 11,
+                                        border: '1px solid ' + C.border,
+                                        color: C.muted,
+                                        fontSize: 11,
+                                        textDecoration: 'none',
+                                      },
+                                    },
+                                    '打开课程',
+                                  )
+                                : null,
+                            )
+                          : null,
                       ),
                       item.due
                         ? h(
@@ -2644,7 +2695,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v3.9.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v4.0.0'),
         ),
         h(
           'div',
