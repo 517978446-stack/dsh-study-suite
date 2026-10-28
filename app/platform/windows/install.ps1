@@ -340,7 +340,15 @@ if (-not $NoWatchdog) {
     }
   }
 } else {
-  Write-Host "== 按 -NoWatchdog 跳过看门狗"
+  $watchdogPref = Join-Path $Base "watchdog.json"
+  [System.IO.File]::WriteAllText($watchdogPref, '{"enabled": false}', (New-Object System.Text.UTF8Encoding($false)))
+  $existingTask = Get-ScheduledTask -TaskName "StudySuiteWatchdog" -ErrorAction SilentlyContinue
+  if ($existingTask) {
+    Unregister-ScheduledTask -TaskName "StudySuiteWatchdog" -Confirm:$false
+    Write-Host "== 按 -NoWatchdog 跳过看门狗，并移除了已有的任务"
+  } else {
+    Write-Host "== 按 -NoWatchdog 跳过看门狗（已记住这个选择）"
+  }
 }
 
 @"

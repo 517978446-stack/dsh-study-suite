@@ -11,7 +11,8 @@ param(
   [switch]$Install,
   [switch]$Remove,
   [switch]$Pause,
-  [switch]$Resume
+  [switch]$Resume,
+  [switch]$Force      # 忽略 watchdog.json 里记住的「已关闭」
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +20,8 @@ $Base = if ($env:STUDY_SUITE_HOME) { $env:STUDY_SUITE_HOME } else { Join-Path $e
 $Runner = Join-Path $Base "run-service.cmd"
 $Log = Join-Path $Base "service.log"
 $Paused = Join-Path $Base ".watchdog-paused"
+# 和 remind.json 一样：删过一次就一直是关，升级不会自己回来
+$PrefFile = Join-Path $Base "watchdog.json"
 $TaskName = "StudySuiteWatchdog"
 $Port = 8791
 
@@ -46,6 +49,24 @@ function Start-StudyService {
   }
 }
 
+function Read-Preference {
+  if (-not (Test-Path $PrefFile)) { return $null }
+  try {
+    $data = Get-Content $PrefFile -Raw | ConvertFrom-Json
+    if ($null -ne $data.enabled) { return [bool]$data.enabled }
+  } catch { }
+  return $null
+}
+
+function Write-Preference($enabled) {
+  $json = if ($enabled) { '{"enabled": true}' } else { '{"enabled": false}' }
+  try {
+    [System.IO.File]::WriteAllText($PrefFile, $json, (New-Object System.Text.UTF8Encoding($false)))
+  } catch {
+    Write-Host "!! 没能写入 $PrefFile（不影响本次操作）"
+  }
+}
+
 function Register-Task {
   $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"')
@@ -65,13 +86,21 @@ function Register-Task {
 
 switch ($true) {
   { $Install } {
+    $pref = Read-Preference
+    if ($pref -eq $false -and -not $Force) {
+      Write-Host "== 看门狗之前被你关掉了（$PrefFile），这次跳过；要恢复加 -Force"
+      exit 0
+    }
     if (-not (Test-Path $Runner)) { Write-Host "没有找到 $Runner，请先跑 install.ps1"; exit 1 }
     Register-Task
+    Write-Preference $true
     exit 0
   }
   { $Remove } {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Preference $false
     Write-Host "已移除计划任务 $TaskName"
+    Write-Host "已记住这个选择：以后重装不会自动开启；要恢复运行 watchdog.ps1 -Install -Force"
     exit 0
   }
   { $Pause } {

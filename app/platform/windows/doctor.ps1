@@ -172,6 +172,20 @@ if ($remindTask) {
 } else {
   Warn "没有注册提醒任务；需要的话运行 remind-windows.ps1"
 }
+$watchTask = Get-ScheduledTask -TaskName "StudySuiteWatchdog" -ErrorAction SilentlyContinue
+$watchPrefFile = Join-Path $Base "watchdog.json"
+$watchPref = $null
+if (Test-Path $watchPrefFile) {
+  try { $watchPref = (Get-Content $watchPrefFile -Raw | ConvertFrom-Json).enabled } catch { $watchPref = $null }
+}
+if ($watchTask) {
+  Ok "服务看门狗已注册（每 1 分钟检查）"
+} elseif ($watchPref -eq $false) {
+  Info "看门狗已被你关闭（$watchPrefFile），重装不会自动开；恢复：watchdog.ps1 -Install -Force"
+} else {
+  Warn "没有注册服务看门狗；需要自动拉起就运行 watchdog.ps1 -Install"
+}
+
 $remindLog = Join-Path $Base "remind.log"
 if (Test-Path $remindLog) {
   $tail = Get-Content $remindLog -Tail 3 -ErrorAction SilentlyContinue

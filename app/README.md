@@ -29,21 +29,25 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| Windows | [study-suite-windows-7.13.0.zip](packages/study-suite-windows-7.13.0.zip) | 含 install.ps1、doctor.ps1、check-win.ps1 |
-| macOS + Windows | [study-suite-7.13.0-macos-win.zip](packages/study-suite-7.13.0-macos-win.zip) | 完整版，含启动脚本 |
+| Windows | [study-suite-windows.zip](https://github.com/517978446-stack/dsh-study-suite/releases/latest) | 含 install.ps1、doctor.ps1、check-win.ps1 |
+| macOS + Windows | [study-suite-macos-win.zip](https://github.com/517978446-stack/dsh-study-suite/releases/latest) | 完整版，含启动脚本 |
 
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
 
 ## Windows 能力说明
 
-| 功能 | Windows |
-|---|---|
-| 翻译（快速引擎） | ✅ |
-| 精准翻译 7B | ❌ 仅 macOS（依赖 MLX） |
-| 术语表 | ⚠️ 只在 7B 精准模式下生效；快速引擎不走术语表 |
-| 语音转写 | 需 `-Full`；模型首次使用时下载 |
-| 说话人分离 | ❌ 未打包 |
-| 图片 / 扫描件 OCR | ❌ 仅 macOS |
+| 功能 | Windows | macOS |
+|---|---|---|
+| 翻译（快速引擎） | ✅ | ✅ |
+| 精准翻译 7B | ✅ 可选：装 [Ollama](https://ollama.com) 后自动启用 | ✅ 本机 MLX |
+| 术语表 | ⚠️ 只在 7B 精准模式下生效 | 同左 |
+| 语音转写 | 需 `-Full`；模型首次使用时下载 | 同左 |
+| 说话人分离 | ❌ 未打包 | 需 `--full` |
+| 图片 / 扫描件 OCR | ✅ RapidOCR（本机离线） | ✅ 系统 Vision |
+| CN 一键登录 | ✅ 需 Edge/Chrome | ✅ 需 Edge/Chrome |
+
+安装体积：Windows 默认会装 OCR 与登录依赖（`rapidocr_onnxruntime`、`pymupdf`、
+`wordninja`、`playwright`），**约 80–100 MB**，不需要浏览器内核；`-Full` 另加语音模型。
 
 ## 界面结构
 

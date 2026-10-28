@@ -15,6 +15,21 @@ import sys
 def main() -> int:
     bad = 0
 
+    # .ps1 需要 PowerShell 才能解析；GitHub 的 windows runner 有 pwsh
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if shell:
+        sample = (
+            "$tokens = $null; $errors = $null; "
+            "[System.Management.Automation.Language.Parser]::ParseFile('%s', [ref]$tokens, [ref]$errors) | Out-Null; "
+            "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Output $_.Message }; exit 1 }"
+        )
+        for path in sorted(pathlib.Path("app").rglob("*.ps1")):
+            result = subprocess.run([shell, "-NoProfile", "-Command", sample % path.resolve()],
+                                    capture_output=True, text=True)
+            if result.returncode != 0:
+                print("PowerShell 解析失败: %s\n%s" % (path, result.stdout + result.stderr))
+                bad = 1
+
     for path in sorted(pathlib.Path("app").rglob("*.sh")):
         result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
         if result.returncode != 0:

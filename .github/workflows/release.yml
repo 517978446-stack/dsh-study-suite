@@ -19,11 +19,14 @@ jobs:
       - name: 检查脚本编码
         run: python3 dev/check-encoding.py .
 
-      - name: 检查包是否齐全
+      - name: 构建安装包（仓库里不存二进制）
+        env:
+          VERSION: ${{ github.ref_name }}   # 形如 v7.13.1
         run: |
           set -e
+          VERSION="${VERSION#v}" ./dev/pack.sh
           ls -lh packages/*.zip
-          test "$(ls packages/*.zip | wc -l)" -ge 1
+          test "$(ls packages/*.zip | wc -l)" -ge 2
 
       - name: 发布前确认包内没有个人信息
         run: python3 dev/check-privacy.py packages/*.zip

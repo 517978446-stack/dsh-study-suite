@@ -1,5 +1,25 @@
 # 更新日志
 
+## 7.13.1 — 2026-10-29
+
+**仓库卫生**
+- `packages/*.zip` 不再入库：改由 `release.yml` 在 CI 里执行 `dev/pack.sh` 构建后上传
+- `.gitignore` 忽略 `packages/*.zip`；README 下载链接指向 Releases
+- 误提交的临时构建包（9.9.9）及其分支已删除
+
+**看门狗也记住用户的选择**
+- `watchdog.json {"enabled": false}`：`watchdog.ps1 -Remove` 写入，`install.ps1` 升级时读到就跳过
+- 恢复：`watchdog.ps1 -Install -Force`；`install.ps1 -NoWatchdog` 同样会记住
+- `doctor.ps1` 报告看门狗是否注册 / 是否被关闭
+
+**CI**
+- `check-syntax.py` 在 Windows runner 上用 PowerShell 解析 `.ps1`（之前完全跳过）
+- `release.yml` 构建时把 tag 的 `v` 前缀去掉，产物命名与之前一致
+
+**文档**
+- 能力表按实际更新：Windows 已有 OCR、Ollama 7B、一键登录
+- 写明默认安装的 OCR/登录依赖约 80–100 MB
+
 ## 7.13.0 — 2026-10-29
 
 **macOS 对齐 Windows 的新能力**

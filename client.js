@@ -4388,7 +4388,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.1'),
         ),
         h(
           'div',
