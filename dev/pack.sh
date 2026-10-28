@@ -15,7 +15,11 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
 SRC="${STUDY_SUITE_DIST:-$REPO/app}"
-VERSION="${VERSION:-$(python3 -c "import json,sys;print(json.load(open('$REPO/package.json'))['version'])")}"
+# 两个平台各自维护版本号：发布节奏不同，不必互相牵制
+MAC_VERSION="${MAC_VERSION:-$(cat "$REPO/app/platform/macos/VERSION" 2>/dev/null || echo 0.0.0)}"
+WIN_VERSION="${WIN_VERSION:-$(cat "$REPO/app/platform/windows/VERSION" 2>/dev/null || echo 0.0.0)}"
+MAC_VERSION="${MAC_VERSION#v}"
+WIN_VERSION="${WIN_VERSION#v}"
 OUT="$REPO/packages"
 
 [ -d "$SRC/service" ] || { echo "找不到源码目录: $SRC/service（用 STUDY_SUITE_DIST 指定）"; exit 1; }
@@ -43,30 +47,11 @@ cp "$SRC"/{README.md,INSTALL.md,CHANGELOG.md} "$PKG/"
 # 面板：仓库根就是插件源码，包里需要「本地插件」形态的 package.json
 cp "$REPO"/{client.js,index.js,cordis.patch.yml,icon.svg} "$PKG/plugin/"
 cp -R "$REPO/locale" "$PKG/plugin/"
-python3 - "$REPO/package.json" "$PKG/plugin/package.json" "$PKG/plugin/cordis.patch.yml" <<'PY'
-import json
-import sys
-
-src, dst, patch_yml = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(src, encoding="utf-8") as fh:
-    meta = json.load(fh)
-meta["name"] = "@local/study-suite"
-meta["private"] = True
-for key in ("license", "author", "keywords", "repository", "bugs", "homepage", "publishConfig"):
-    meta.pop(key, None)
-with open(dst, "w", encoding="utf-8", newline="\n") as fh:
-    json.dump(meta, fh, ensure_ascii=False, indent=2)
-    fh.write("\n")
-
-with open(patch_yml, encoding="utf-8") as fh:
-    text = fh.read()
-text = text.replace("'dsh-study-suite'", "'@local/study-suite'")
-with open(patch_yml, "w", encoding="utf-8", newline="\n") as fh:
-    fh.write(text)
-PY
+cp "$REPO/package.json" "$PKG/plugin/package.json"
+python3 "$HERE/set-plugin-version.py" "$PKG/plugin" "$MAC_VERSION"
 
 # macOS + Windows 通用包
-(cd "$TMP" && zip -qr "$OUT/study-suite-$VERSION-macos-win.zip" study-suite \
+(cd "$TMP" && zip -qr "$OUT/study-suite-$MAC_VERSION-macos-win.zip" study-suite \
   -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
 # 纯 macOS 包：只保留 mac 入口（Windows 包由维护者自行发布）
@@ -75,17 +60,18 @@ cp -R "$PKG" "$TMP/mac/study-suite"
 rm -f "$TMP/mac/study-suite/install.ps1" "$TMP/mac/study-suite/doctor.ps1" \
       "$TMP/mac/study-suite/check-win.ps1" "$TMP/mac/study-suite/remind-windows.ps1" \
       "$TMP/mac/study-suite/watchdog.ps1"
-(cd "$TMP/mac" && zip -qr "$OUT/study-suite-macos-$VERSION.zip" study-suite \
+(cd "$TMP/mac" && zip -qr "$OUT/study-suite-macos-$MAC_VERSION.zip" study-suite \
   -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
 # Windows 专用包：去掉 macOS 专属入口
 mkdir -p "$TMP/win"
 cp -R "$PKG" "$TMP/win/study-suite"
 rm -f "$TMP/win/study-suite/install.sh" "$TMP/win/study-suite/doctor.command" "$TMP/win/study-suite/start.command"
-(cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$VERSION.zip" study-suite \
+python3 "$HERE/set-plugin-version.py" "$TMP/win/study-suite/plugin" "$WIN_VERSION"
+(cd "$TMP/win" && zip -qr "$OUT/study-suite-windows-$WIN_VERSION.zip" study-suite \
   -x "*.DS_Store" -x "*__pycache__*" -x "*.pyc")
 
-echo "已构建:"
+echo "已构建（macOS ${MAC_VERSION} / Windows ${WIN_VERSION}）:"
 ls -lh "$OUT" | tail -2
 
 echo

@@ -6,7 +6,8 @@ name: release
 on:
   push:
     tags:
-      - "v*"
+      - "v*"          # 旧写法，兼容
+      - "macos-v*"    # macOS 专用；Windows 用 win-v* 由维护者自己的流程构建
 
 permissions:
   contents: write
@@ -22,10 +23,12 @@ jobs:
 
       - name: 构建安装包（仓库里不存二进制）
         env:
-          VERSION: ${{ github.ref_name }}   # 形如 v7.13.1
+          MACOS_TAG: ${{ github.ref_name }}
         run: |
           set -e
-          VERSION="${VERSION#v}" ./dev/pack.sh
+          # 版本号以 app/platform/macos/VERSION 为准，标签只用来触发
+          cat app/platform/macos/VERSION
+          ./dev/pack.sh
           ls -lh packages/*macos*.zip
           test "$(ls packages/*macos*.zip | wc -l)" -ge 1
 
@@ -38,6 +41,7 @@ jobs:
         run: |
           set -e
           TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG，资产版本以 app/platform/macos/VERSION 为准"
           # 已存在就补传（--clobber 覆盖同名资产），避免重复触发时失败
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" packages/*macos*.zip --clobber

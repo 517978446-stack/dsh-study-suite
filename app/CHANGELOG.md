@@ -1,5 +1,14 @@
 # 更新日志
 
+## 7.14.0 — 2026-10-29
+
+**两个平台各自维护版本号**
+- 新增 `app/platform/macos/VERSION`（7.14.0）与 `app/platform/windows/VERSION`（7.13.3）
+- `dev/pack.sh` 按平台版本命名包，并把面板里的版本标签写成对应平台的号
+- 新增 `dev/set-plugin-version.py`：打包时统一处理插件 id、package.json、版本标签
+- `release.yml` 支持 `macos-v*` 标签；版本号以 VERSION 文件为准，标签只负责触发
+- 标签约定：macOS `macos-v7.14.0`、Windows `win-v7.13.3`（后者由维护者自己打）
+
 ## 7.13.3 — 2026-10-29
 
 **发布分工：本仓库只发 macOS 包**

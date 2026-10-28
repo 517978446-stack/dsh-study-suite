@@ -34,6 +34,26 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 
 > Windows 安装包由维护者在自己的环境构建发布，本仓库的 Release 只包含 macOS 包。
 
+### 两个平台各自维护版本号
+
+| 文件 | 当前 |
+|---|---|
+| `app/platform/macos/VERSION` | 7.14.0 |
+| `app/platform/windows/VERSION` | 7.13.3 |
+
+打包时按平台写入包名和面板里的版本标签，两边不必同步：
+
+```bash
+./dev/pack.sh
+# 已构建（macOS 7.14.0 / Windows 7.13.3）:
+#   study-suite-macos-7.14.0.zip
+#   study-suite-7.14.0-macos-win.zip
+#   study-suite-windows-7.13.3.zip
+```
+
+标签约定：macOS 用 `macos-v7.14.0`，Windows 用 `win-v7.13.3`（由维护者自己打）。
+`v*` 旧写法仍然兼容，等同于 macOS 发布。
+
 下载后解压，按包内的 `INSTALL.md` 操作。Windows 建议先跑 `check-win.ps1` 预检。
 
 ## Windows 能力说明
