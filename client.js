@@ -21,6 +21,7 @@ window.__ModuleLoader__.load({
           llm: c.llm !== false,
           asr: c.asr !== false,
           asrModelReady: c.asrModelReady !== false,
+          asrDraftModel: c.asrDraftModel || 'base.en',
           platform: (data && data.platform) || '',
           imageOcr: c.imageOcr !== false,
           // pdfOcr 只影响扫描件；文字版 PDF 靠 pypdf 就能读，所以别把它理解成“PDF 不可用”
@@ -1594,8 +1595,8 @@ window.__ModuleLoader__.load({
     const Live = (function () {
       const TARGET_RATE = 16000;
       const SPEECH_RMS = 0.012;   // 判定「有人在说话」的阈值
-      const SILENCE_MS = 380;     // 说完后静音多久切一句
-      const MIN_MS = 550;         // 太短的片段丢掉
+      const SILENCE_MS = 260;     // 说完后静音多久切一句
+      const MIN_MS = 450;         // 太短的片段丢掉
       const MAX_MS = 2600;        // 一直不停顿就强制切
       const ENDPOINT = 'http://127.0.0.1:8791';
 
@@ -1613,6 +1614,7 @@ window.__ModuleLoader__.load({
         lastError: '',
         engine: 'fast',
         target: 'zh',
+        draftModel: 'base.en',
         startedAt: 0,
         paused: false,
         lastLevelAt: 0,
@@ -1784,7 +1786,7 @@ window.__ModuleLoader__.load({
             // 草稿只送最近 2 秒：越短越快，前面的词已经在屏幕上了
             const keep = Math.min(merged.length, TARGET_RATE * 2);
             const snapshot = merged.slice(merged.length - keep);
-            fetch(ENDPOINT + '/asr?prompt=auto&vad=0&beam=1', {
+            fetch(ENDPOINT + '/asr?prompt=auto&vad=0&beam=1&model=' + encodeURIComponent(state.draftModel), {
               method: 'POST',
               headers: { 'content-type': 'audio/wav' },
               body: encodeWav(normalise(snapshot)),
@@ -1842,6 +1844,7 @@ window.__ModuleLoader__.load({
         if (state.running) return;
         state.engine = (options && options.engine) || 'fast';
         state.target = (options && options.target) || 'zh';
+        state.draftModel = (options && options.draftModel) || 'base.en';
         state.lastError = '';
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: Object.assign(
@@ -2538,6 +2541,7 @@ window.__ModuleLoader__.load({
           await Live.start({
             // 实时字幕优先延迟：7B 每句 2-3 秒，跟不上说话
             engine: liveEngine,
+            draftModel: caps.asrDraftModel || 'base.en',
             target: toRef.current,
             deviceId: deviceRef.current || undefined,
           });
@@ -3671,7 +3675,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.3.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.4.0'),
         ),
         h(
           'div',
