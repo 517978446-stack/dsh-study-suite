@@ -1193,10 +1193,10 @@ window.__ModuleLoader__.load({
                                       'a',
                                       {
                                         key: 'read',
-                                        href: ENGINE + '/reading.pdf?path=' + encodeURIComponent(readDoc.path),
+                                        href: ENGINE + '/reading?path=' + encodeURIComponent(readDoc.path),
                                         target: '_blank',
                                         rel: 'noreferrer',
-                                        title: '生成中英对照 PDF（原文 + 逐段翻译），可直接保存/打印',
+                                        title: '生成中英对照 PDF（原文 + 逐段 7B 翻译）；首次几十秒到两三分钟，有进度条，之后走缓存',
                                         style: {
                                           display: 'inline-flex',
                                           alignItems: 'center',
@@ -3009,7 +3009,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.8.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.9.0'),
         ),
         h(
           'div',
