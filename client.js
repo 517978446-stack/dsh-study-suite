@@ -621,7 +621,8 @@ window.__ModuleLoader__.load({
                 const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
                 const list = timetable.classes.filter(function (c) { return c.day === today; });
                 const now = new Date().toTimeString().slice(0, 5);
-                const next = list.filter(function (c) { return c.start >= now; })[0];
+                const sorted = list.slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+                const next = sorted.filter(function (c) { return c.start >= now; })[0];
                 if (!list.length) return '今天没课';
                 return '今天 ' + list.length + ' 节' + (next ? ' · 下一节 ' + next.start + ' ' + next.course : ' · 今天已上完');
               })(),
@@ -629,7 +630,10 @@ window.__ModuleLoader__.load({
             },
             timetable.error
               ? h('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, timetable.error)
-              : h(
+              : !timetable.loading && !timetable.classes.length
+                ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
+                    '课表还是空的：上面传一张课表截图，或者手动加一门。')
+                : h(
                   'div',
                   { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
                   [1, 2, 3, 4, 5, 6, 7].map(function (day) {
@@ -673,10 +677,11 @@ window.__ModuleLoader__.load({
                           return h(
                             'div',
                             { key: index, style: { display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
-                            h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, c.start + '–' + c.end),
+                            h('span', { style: { fontSize: 12, color: C.muted, flex: '0 0 auto' } }, c.start),
                             h('span', { style: { fontSize: 13, fontWeight: 600 } }, c.course),
-                            h('span', { style: { fontSize: 12, color: C.muted } }, c.kind),
-                            h('span', { style: { fontSize: 12, color: C.muted } }, '· ' + c.room),
+                            c.room
+                              ? h('span', { style: { fontSize: 12, color: C.muted } }, '· ' + c.room)
+                              : null,
                           );
                         }),
                       ),
@@ -811,7 +816,9 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         loadDigest();
-        loadPlan();
+        // 只走一条链：先静默同步 CN 作业，失败才回落到本地 plan.json。
+        // 之前 loadPlan 和 syncAssignments 并行，谁后返回谁说了算，
+        // 慢的时候会看到空列表把刚同步的数据盖掉
         syncAssignments(true);
         fetch(ENGINE + '/hidden', { cache: 'no-store' })
           .then(function (r) { return r.json(); })
@@ -855,8 +862,8 @@ window.__ModuleLoader__.load({
         } catch (err) {
           const message = String((err && err.message) || err);
           if (silent) {
-            setPlan(function (prev) { return Object.assign({}, prev, { loading: false }); });
             setPlanNotice('还没同步过 CN 作业：点「同步作业」试试（未登录会失败）');
+            loadPlan();
           } else {
             setPlan(function (prev) { return Object.assign({}, prev, { loading: false, error: message }); });
             setPlanNotice('');
@@ -1757,7 +1764,8 @@ window.__ModuleLoader__.load({
             plan.items.length === 0 && !plan.loading && !plan.error
               ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
                   h('p', { style: { margin: 0 } }, '还没有待办。'),
-                  h('p', { style: { margin: '4px 0 0' } }, '这份清单是每个人自己的：在下面添加你的作业标题与截止日期，提醒任务会读取它。'))
+                  h('p', { style: { margin: '4px 0 0' } },
+                    '点上面的「同步作业」从 CN 拉作业；课表里排了今天/明天的课也会出现在这里。'))
               : h(
                   'div',
                   { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
@@ -1781,7 +1789,13 @@ window.__ModuleLoader__.load({
                         return a.due < b.due ? -1 : 1;
                       });
                   })().map(function (item) {
-                    const overdue = item.due && !item.done && item.due < new Date().toISOString().slice(0, 10);
+                    const todayLocal = (function () {
+                      const now = new Date();
+                      return now.getFullYear() + '-' +
+                        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(now.getDate()).padStart(2, '0');
+                    })();
+                    const overdue = item.due && !item.done && item.due < todayLocal;
                     return h(
                       'div',
                       {

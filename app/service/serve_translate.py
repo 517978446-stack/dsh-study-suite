@@ -1001,10 +1001,13 @@ def normalize_class(item):
     if day < 1 or day > 7:
         raise BadRequest("day 必须是 1-7")
     start = str(item.get("start") or "").strip()
-    if not re.fullmatch(r"\d{1,2}:\d{2}", start):
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", start)
+    if not match:
         raise BadRequest("start 必须是 HH:MM")
-    hour, minute = start.split(":")
-    start = "%02d:%02d" % (int(hour), int(minute))
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if hour > 23 or minute > 59:
+        raise BadRequest("start 必须是 00:00-23:59 之间的时间")
+    start = "%02d:%02d" % (hour, minute)
     return {
         "day": day,
         "start": start,
@@ -1191,8 +1194,12 @@ def parse_timetable(text, blocks=None):
         return rules
     try:
         engine_state = llm_engine()
-    except BadRequest as err:
-        raise BadRequest("课表识别需要本地大模型：%s" % err)
+    except BadRequest:
+        # 这时候说「精准翻译只在 macOS」完全对不上场景，用户只会更迷惑
+        raise BadRequest(
+            "没从这张图里认出课表结构。换一张带「周一到周日」表头、能看清时间的截图；"
+            "装了 Ollama 的话还能让本地大模型兜底识别"
+        )
     if engine_state.get("mode") != "http":
         raise BadRequest("课表识别需要本地 HTTP 推理服务（Ollama）")
     raw = _http_chat(TIMETABLE_PROMPT, text, 1200)
@@ -1429,6 +1436,17 @@ def load_plan():
         item_id = item.get("id")
         if item_id in state:
             item["done"] = bool(state[item_id])
+    # 课程待办的 id 里带日期，跨天会越攒越多：只留最近 14 天
+    cutoff = (datetime.date.today() - datetime.timedelta(days=14)).isoformat()
+    stale = []
+    for key in state:
+        if not str(key).startswith("class:"):
+            continue
+        parts = str(key).split(":")
+        if len(parts) > 1 and parts[1] < cutoff:
+            stale.append(key)
+    for key in stale:
+        state.pop(key, None)
     out = dict(data)
     out["items"] = merged
     out["state"] = state
@@ -2906,8 +2924,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._json(json.load(open(TIMETABLE_FILE, encoding="utf-8")))
             except FileNotFoundError:
-                # 200 + 空列表：没配课表和路由不存在要区分开，否则面板会当成接口挂了
-                self._json({"classes": [], "error": "还没有课表：在面板里传一张课表截图识别，或者手动添加"})
+                # 空课表不是错误：第一次打开面板就显示红字会让人以为坏了
+                self._json({"classes": []})
             except Exception as err:
                 self._json({"classes": [], "error": str(err)}, 500)
             return
@@ -3144,6 +3162,14 @@ class Handler(BaseHTTPRequestHandler):
                     result = ocr_result(path)
                     text = text_from_result(result)
                     blocks = blocks_from_result(result)
+                except ImportError as err:
+                    sys.stderr.write("[timetable] ocr deps missing: %s\n" % err)
+                    raise BadRequest("这台机器没装图片识别依赖，重装时加 -Full：install.ps1 -Full")
+                except Exception as err:
+                    # 用户传错文件（PDF/Word/文本）时 OCR 会抛解析错误，
+                    # 原始消息里带本机绝对路径，不能直接回给面板
+                    sys.stderr.write("[timetable] ocr failed: %s\n" % err)
+                    raise BadRequest("这张图打不开，换一张 PNG / JPG 截图试试")
                 finally:
                     try:
                         os.remove(path)
@@ -3231,7 +3257,17 @@ class Handler(BaseHTTPRequestHandler):
                             }
                         )
                 fresh.sort(key=lambda entry: (entry.get("due") or "9999-99-99", entry.get("course") or "", entry.get("title") or ""))
-                plan["items"] = manual + fresh
+                if not fresh and failures:
+                    # 全都没拉到（多半是 token 过期）：别把已经同步好的列表清空
+                    raise BadRequest("CN 这边没拉到任何作业（%d 门课失败，多半是登录过期了）：%s" % (len(failures), failures[0][:120]))
+                # 只拉到一半时，失败课程的旧条目保留，不然它们会从待办里消失
+                failed_numbers = set(row.get("number") for row in rows if row.get("error"))
+                kept = []
+                for item_id, item in previous.items():
+                    parts = str(item_id).split(":")
+                    if len(parts) >= 2 and parts[1] in failed_numbers:
+                        kept.append(item)
+                plan["items"] = manual + kept + fresh
                 plan.setdefault("state", {})
                 plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
                 save_plan(plan)

@@ -115,6 +115,15 @@ def main():
             if not isinstance(plan.get("items"), list):
                 failures.append("/plan 的 items 应该是数组")
 
+        # 临时目录里没有 CN 登录态，/plan/refresh 必须明确拒绝而不是 500
+        code, body = post("/plan/refresh", {})
+        if code != 400:
+            failures.append("没登录 CN 时 /plan/refresh 应返回 400，实际 %s %s" % (code, body[:60]))
+
+        code, body = post("/timetable/add", {"day": 1, "start": "25:00", "course": "Bad"})
+        if code != 400:
+            failures.append("25:00 应被拒绝，实际 %s %s" % (code, body[:60]))
+
         if failures:
             print("冒烟失败：")
             for item in failures:
