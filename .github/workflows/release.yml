@@ -1,5 +1,7 @@
-name: 发布
+name: release
 
+# 打 tag（v*）时自动建 Release，并把 packages/ 下的 zip 传成资产。
+# 这样下载计数、版本页这些元信息就有了，也不用本地 token。
 on:
   push:
     tags:
@@ -9,18 +11,31 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 校验脚本编码
-        run: python3 dev/check-encoding.py .
-      - name: 创建 Release 并上传安装包
-        uses: softprops/action-gh-release@v2
-        with:
-          files: packages/*.zip
-          generate_release_notes: true
-          body: |
-            Windows：下载 `study-suite-windows-*.zip`，解压后先跑 `check-win.ps1`，再跑 `install.ps1`。
 
-            macOS / 跨平台：下载 `study-suite-*-macos-win.zip`，按包内 `INSTALL.md` 操作。
+      - name: 检查脚本编码
+        run: python3 dev/check-encoding.py .
+
+      - name: 检查包是否齐全
+        run: |
+          set -e
+          ls -lh packages/*.zip
+          test "$(ls packages/*.zip | wc -l)" -ge 1
+
+      - name: 建 Release 并上传资产
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF#refs/tags/}"
+          # 已存在就补传（--clobber 覆盖同名资产），避免重复触发时失败
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" packages/*.zip --clobber
+          else
+            gh release create "$TAG" packages/*.zip \
+              --title "$TAG" \
+              --generate-notes
+          fi
