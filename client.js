@@ -986,6 +986,17 @@ window.__ModuleLoader__.load({
             h(
               'a',
               {
+                href: 'https://www.thecn.com/',
+                target: '_blank',
+                rel: 'noreferrer',
+                title: 'CN 的登录是浏览器 cookie，服务里的凭证只用于后台抓取；在这里登录一次即可',
+                style: Object.assign(pillStyle(false), { height: 28 }),
+              },
+              '登录 CN',
+            ),
+            h(
+              'a',
+              {
                 href: state.listUrl,
                 target: '_blank',
                 rel: 'noreferrer',
@@ -1043,12 +1054,26 @@ window.__ModuleLoader__.load({
               : h(
                   'div',
                   { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-                  plan.items.filter(function (i) { return showDone || !i.done; }).sort(function (a, b) {
-                    if (!a.due && !b.due) return 0;
-                    if (!a.due) return 1;
-                    if (!b.due) return -1;
-                    return a.due < b.due ? -1 : 1;
-                  }).map(function (item) {
+                  (function () {
+                    const order = state.courses.map(function (c) {
+                      const matched = (c.name || '').match(/([A-Z]{2,}\d{3,4})/);
+                      return matched ? matched[1] : c.name;
+                    });
+                    const rank = function (course) {
+                      const index = order.indexOf(course);
+                      return index === -1 ? 99 : index;
+                    };
+                    return plan.items
+                      .filter(function (i) { return showDone || !i.done; })
+                      .sort(function (a, b) {
+                        const byCourse = rank(a.course) - rank(b.course);
+                        if (byCourse !== 0) return byCourse;
+                        if (!a.due && !b.due) return 0;
+                        if (!a.due) return 1;
+                        if (!b.due) return -1;
+                        return a.due < b.due ? -1 : 1;
+                      });
+                  })().map(function (item) {
                     const overdue = item.due && !item.done && item.due < new Date().toISOString().slice(0, 10);
                     return h(
                       'div',
@@ -2916,7 +2941,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.3.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.4.0'),
         ),
         h(
           'div',
