@@ -518,6 +518,7 @@ window.__ModuleLoader__.load({
       const [showDone, setShowDone] = React.useState(false);
       const [filters, setFilters] = React.useState({});
       const [showOtherTeachers, setShowOtherTeachers] = React.useState({});
+      const [showAllPages, setShowAllPages] = React.useState({});
       const [refreshing, setRefreshing] = React.useState(false);
       const [hiddenCourses, setHiddenCourses] = React.useState([]);
       const [showHidden, setShowHidden] = React.useState(false);
@@ -865,36 +866,93 @@ window.__ModuleLoader__.load({
                         return isTeacherHeading(title) && title.toLowerCase().indexOf(filter.teacher.toLowerCase()) < 0;
                       })
                     : [];
-                  const showing = showOtherTeachers[item.name] ? sections : mine;
-                  const body = showing.length === 0
-                    ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有可见的章节内容。')
-                    : showing.map(function (section, index) {
-                      return h(
-                        'div',
-                        { key: index, style: { display: 'flex', flexDirection: 'column', gap: 2 } },
-                        h('span', { style: { fontSize: 12, fontWeight: 600 } }, section.title || '(未命名章节)'),
-                        (section.pages || []).slice(0, 8).map(function (page, pageIndex) {
-                          const mark = annotatePage(page);
-                          return h(
-                            'span',
-                            {
-                              key: pageIndex,
-                              style: {
-                                fontSize: 12,
-                                color: C.muted,
-                                paddingLeft: 10,
-                                opacity: mark.past ? 0.55 : 1,
-                              },
-                            },
-                            '· ' + page + mark.suffix + (mark.past ? '（已过）' : ''),
-                          );
-                        }),
-                      );
+                  const KEY = /(assess|assign|submission|submit|brief|rubric|project|quiz|exam|marks|outline|syllabus|announce|grade|requirement)/i;
+                  const keepAll = !!showAllPages[item.name];
+                  const showOthers = !!showOtherTeachers[item.name];
+                  const source = showOthers ? sections : mine;
+                  const prepared = source.map(function (sec) {
+                    const pages = (sec.pages || []).slice();
+                    if (showOthers || keepAll) {
+                      return { section: sec, pages: pages.slice(0, 8), hidden: Math.max(0, pages.length - 8) };
+                    }
+                    const keep = pages.filter(function (page) {
+                      return KEY.test(page) || KEY.test(sec.title || '');
                     });
+                    return { section: sec, pages: keep.slice(0, 8), hidden: pages.length - Math.min(keep.length, 8) };
+                  }).filter(function (entry) { return entry.pages.length > 0; });
+                  const totalPages = source.reduce(function (sum, sec) { return sum + (sec.pages || []).length; }, 0);
+                  const shownPages = prepared.reduce(function (sum, e) { return sum + e.pages.length; }, 0);
+                  const hiddenTotal = Math.max(0, totalPages - shownPages);
+                  const hiddenSections = Math.max(0, source.length - prepared.length);
+                  const body = prepared.length === 0
+                    ? h('span', { style: { fontSize: 12, color: C.muted } }, '这门课还没有作业相关的内容。')
+                    : prepared.map(function (entry, index) {
+                        const section = entry.section;
+                        return h(
+                          'div',
+                          { key: index, style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+                          h('span', { style: { fontSize: 12, fontWeight: 600 } }, section.title || '(未命名章节)'),
+                          entry.pages.map(function (page, pageIndex) {
+                            const mark = annotatePage(page);
+                            return h(
+                              'span',
+                              {
+                                key: pageIndex,
+                                style: {
+                                  fontSize: 12,
+                                  color: C.muted,
+                                  paddingLeft: 10,
+                                  opacity: mark.past ? 0.55 : 1,
+                                },
+                              },
+                              '· ' + page + mark.suffix + (mark.past ? '（已过）' : ''),
+                            );
+                          }),
+                        );
+                      });
                   return h(
                     'div',
                     { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                     body,
+                    h(
+                      'div',
+                      { style: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 11, color: C.muted, flexWrap: 'wrap' } },
+                      !keepAll && hiddenTotal > 0
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              onClick: function (event) {
+                                event.stopPropagation();
+                                setShowAllPages(function (prev) {
+                                  var next = Object.assign({}, prev);
+                                  next[item.name] = true;
+                                  return next;
+                                });
+                              },
+                              style: { border: 'none', background: 'transparent', color: C.accent, cursor: 'pointer', fontSize: 11, padding: 0 },
+                            },
+                            '只看作业（隐藏了 ' + hiddenTotal + ' 项 / ' + hiddenSections + ' 章教学材料） · 显示全部',
+                          )
+                        : keepAll
+                          ? h(
+                              'button',
+                              {
+                                type: 'button',
+                                onClick: function (event) {
+                                  event.stopPropagation();
+                                  setShowAllPages(function (prev) {
+                                    var next = Object.assign({}, prev);
+                                    next[item.name] = false;
+                                    return next;
+                                  });
+                                },
+                                style: { border: 'none', background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: 11, padding: 0 },
+                              },
+                              '只看作业相关',
+                            )
+                          : null,
+                    ),
                     filter
                       ? h(
                           'div',
@@ -3009,7 +3067,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', onClick: () => setTab('interp'), style: pill(tab === 'interp') }, '翻译'),
           h('button', { type: 'button', onClick: () => setTab('detect'), style: pill(tab === 'detect') }, '检测'),
           h('span', { style: { flex: '1 1 auto' } }),
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v5.9.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v6.0.0'),
         ),
         h(
           'div',
