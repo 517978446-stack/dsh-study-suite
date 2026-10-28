@@ -1,0 +1,26 @@
+name: 发布
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 校验脚本编码
+        run: python3 dev/check-encoding.py .
+      - name: 创建 Release 并上传安装包
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/*.zip
+          generate_release_notes: true
+          body: |
+            Windows：下载 `study-suite-windows-*.zip`，解压后先跑 `check-win.ps1`，再跑 `install.ps1`。
+
+            macOS / 跨平台：下载 `study-suite-*-macos-win.zip`，按包内 `INSTALL.md` 操作。

@@ -1,0 +1,12 @@
+# 行尾：脚本必须 CRLF，否则 cmd.exe / PowerShell 5.1 会解析错位
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf
+
+# 安装包是二进制，别做行尾或文本转换
+*.zip binary
+*.png binary
+*.onnx binary
