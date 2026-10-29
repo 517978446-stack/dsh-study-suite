@@ -99,6 +99,8 @@ LLM_DIR = os.path.join(MODELS_DIR, "qwen25-7b-4bit")
 LLM_HTTP_BASE = os.environ.get("CN_LLM_BASE", "http://127.0.0.1:11434").rstrip("/")
 LLM_HTTP_MODEL = os.environ.get("CN_LLM_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 DIAR_DIR = os.path.join(MODELS_DIR, "diar")
+# 课表里今天/明天的课要不要派生进待办；默认开，设 CN_PLAN_CLASSES=0 可关掉
+PLAN_CLASS_ITEMS = os.environ.get("CN_PLAN_CLASSES", "1").strip() != "0"
 
 DIGEST_FILE = os.path.join(SECRETS_DIR, "cn-digest.json")
 FILE_ROOTS = [os.path.expanduser("~"), os.path.join(WORKSPACE, "notes")]
@@ -1744,7 +1746,8 @@ def load_plan():
     state = data.get("state") or {}
     seen = set(item.get("id") for item in manual)
     merged = list(manual)
-    for item in plan_from_timetable(load_timetable(), datetime.date.today()):
+    for item in (plan_from_timetable(load_timetable(), datetime.date.today())
+                 if PLAN_CLASS_ITEMS else []):
         if item.get("id") in seen:
             continue
         # 已经上过（当天已过点且勾过）就不冒出来
