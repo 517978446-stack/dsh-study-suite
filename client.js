@@ -2070,15 +2070,7 @@ window.__ModuleLoader__.load({
                             },
                             style: chipStyle,
                           }, '检查'),
-                          item.url
-                            ? h('a', {
-                                href: item.url,
-                                target: '_blank',
-                                rel: 'noreferrer',
-                                onClick: function (event) { event.stopPropagation(); },
-                                style: Object.assign({ textDecoration: 'none' }, chipStyle),
-                              }, '打开课程')
-                            : null,
+
                           item.kind === 'custom'
                             ? h('button', {
                                 type: 'button',

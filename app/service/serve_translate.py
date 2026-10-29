@@ -1366,6 +1366,9 @@ def extract_plan_items(text):
     return plan_items_from_text(text), "rules"
 
 
+_ZH_CACHE = {}
+
+
 def translate_short_batch(texts):
     """批量把英文短语译成中文，给待办的「中英对照」用。
 
@@ -1376,6 +1379,20 @@ def translate_short_batch(texts):
     if not any(cleaned) or ctranslate2 is None or spm is None:
         return ["" for _ in cleaned]
     out = []
+    # 先查缓存：作业标题基本不变，反复同步没必要重翻
+    pending_index = []
+    result = [""] * len(cleaned)
+    for index, text in enumerate(cleaned):
+        if not text:
+            continue
+        cached = _ZH_CACHE.get(text.lower())
+        if cached:
+            result[index] = cached
+        else:
+            pending_index.append(index)
+    if not pending_index:
+        return result
+    cleaned = [cleaned[index] for index in pending_index]
     try:
         for offset in range(0, len(cleaned), 8):
             chunk = [sentence_case(text) for text in cleaned[offset : offset + 8]]
@@ -1384,8 +1401,14 @@ def translate_short_batch(texts):
                 out.append(usable_chinese(source, piece))
     except Exception as err:
         sys.stderr.write("[plan] translate failed: %s\n" % err)
-        return ["" for _ in cleaned]
-    return out[: len(cleaned)]
+        return result
+    for position, text in enumerate(out):
+        if position >= len(pending_index):
+            break
+        result[pending_index[position]] = text
+        if text and len(_ZH_CACHE) < 4000:
+            _ZH_CACHE[cleaned[position].lower()] = text
+    return result
 
 
 def sentence_case(text):
@@ -3483,6 +3506,10 @@ class Handler(BaseHTTPRequestHandler):
                         note = ("截止 " + due) if due else kind
                         title_zh = translated[cursor] if cursor < len(translated) else ""
                         cursor += 1
+                        if not title_zh:
+                            title_zh = (prev.get("titleZh") or "").strip()
+                        if not course_zh:
+                            course_zh = (prev.get("courseZh") or "").strip()
                         fresh.append(
                             {
                                 "id": item_id,
