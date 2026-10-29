@@ -1,5 +1,12 @@
 # 更新日志
 
+## 7.15.5 — 2026-10-29（macOS）
+
+**同步 Windows 7.2.0 的能力位**
+- `/health` 新增 `speakerDiarization`：依赖装了、两个模型（campplus + pyannote 分割）都在才为 true
+- 面板「缺什么」清单包含说话人分离；缺了就提示装 `--full`
+- macOS 上是核对而非新增——模型和依赖早就随着 `--full` 装了
+
 ## 7.15.4 — 2026-10-29（macOS）
 
 **跟上 Windows 7.13.16 的一轮 bug 清理**
