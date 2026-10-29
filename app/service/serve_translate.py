@@ -1418,6 +1418,29 @@ def extract_plan_items(text):
 _ZH_CACHE = {}
 
 
+def split_sentences(text, limit=30):
+    """把一段作业说明切成句子，给逐句中英对照用。"""
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    if not text:
+        return []
+    # 原文里常有「ONLY.Please」这种句号后不带空格的写法，所以只在句号后
+    # 紧跟大写字母/数字/汉字时切分
+    parts = re.split(r"(?<=[.!?。！？])\s*(?=[A-Z\u4e00-\u9fff])", text)
+    out = []
+    for part in parts:
+        piece = part.strip()
+        if not piece:
+            continue
+        # 太短的小标题也留着，太长的再按分号切一刀
+        if len(piece) > 400:
+            out.extend(x.strip() for x in re.split(r"(?<=[;；])", piece) if x.strip())
+        else:
+            out.append(piece)
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
 def translate_short_batch(texts):
     """批量把英文短语译成中文，给待办的「中英对照」用。
 
@@ -3405,7 +3428,8 @@ class Handler(BaseHTTPRequestHandler):
                  "/timetable/add", "/timetable/save", "/timetable/import",
                  "/hidden/toggle",
                  "/aidetect", "/digest/refresh", "/release", "/plan/toggle",
-                 "/plan/refresh", "/plan/add", "/plan/remove", "/plan/import")
+                 "/plan/refresh", "/plan/add", "/plan/remove", "/plan/import",
+                 "/plan/desc")
         if route not in known:
             self._json({"error": "unknown endpoint: %s" % route}, 404)
             return
@@ -3619,6 +3643,43 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(err)}, 400)
             except Exception as err:
                 self._json({"error": "抓取作业失败：%s" % err}, 500)
+            return
+
+        if route_path.endswith("/plan/desc"):
+            try:
+                payload_in = json.loads(raw.decode("utf-8") or "{}")
+                item_id = payload_in.get("id")
+                if not item_id:
+                    raise BadRequest("缺少 id")
+                plan = read_plan_file()
+                target = None
+                for item in plan.get("items") or []:
+                    if isinstance(item, dict) and item.get("id") == item_id:
+                        target = item
+                        break
+                if target is None:
+                    raise BadRequest("没有这条待办")
+                pairs = target.get("descPairs") or []
+                if not pairs:
+                    desc = (target.get("desc") or "").strip()
+                    if not desc:
+                        raise BadRequest("这条待办没有作业说明")
+                    sentences = split_sentences(desc)
+                    translated = translate_short_batch(sentences)
+                    pairs = [
+                        {"src": sentence, "dst": translated[index] if index < len(translated) else ""}
+                        for index, sentence in enumerate(sentences)
+                    ]
+                    if not any(pair.get("dst") for pair in pairs):
+                        raise BadRequest("翻译引擎没配好，暂时生成不了对照（先用英文原文看）")
+                    target["descPairs"] = pairs
+                    plan.setdefault("state", {})
+                    save_plan(plan)
+                self._json({"ok": True, "pairs": pairs})
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": "生成对照失败：%s" % err}, 500)
             return
 
         if route_path.endswith("/plan/import"):

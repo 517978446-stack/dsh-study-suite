@@ -762,6 +762,7 @@ window.__ModuleLoader__.load({
       const [updatedAt, setUpdatedAt] = React.useState('');
       const [planNotice, setPlanNotice] = React.useState('');
       const [openDesc, setOpenDesc] = React.useState({});
+      const [descPairs, setDescPairs] = React.useState({});
       const planSeq = React.useRef(0);
       const [newItem, setNewItem] = React.useState({ course: '', title: '', due: '' });
       const [taskDraft, setTaskDraft] = React.useState('');
@@ -847,10 +848,8 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         loadDigest();
-        // 先把本地 plan.json 显示出来（打开面板就有内容），再后台同步 CN。
-        // planSeq 保证「后发的请求赢」，慢回来的旧请求不会盖掉新数据
+        // 待办只来自本地：文件导入 + 手动添加，不再自动去 CN 拉
         loadPlan();
-        syncAssignments(true);
         fetch(ENGINE + '/hidden', { cache: 'no-store' })
           .then(function (r) { return r.json(); })
           .then(function (data) { setHiddenCourses((data && data.names) || []); })
@@ -917,6 +916,35 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async function loadDescPairs(id) {
+        if (descPairs[id] && descPairs[id].loading !== true) return;
+        setDescPairs(function (prev) {
+          const next = Object.assign({}, prev);
+          next[id] = { loading: true, pairs: [], error: '' };
+          return next;
+        });
+        try {
+          const response = await fetch(ENGINE + '/plan/desc', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: id }),
+          });
+          const data = await response.json();
+          if (!response.ok || data.error) throw new Error(data.error || '生成对照失败');
+          setDescPairs(function (prev) {
+            const next = Object.assign({}, prev);
+            next[id] = { loading: false, pairs: data.pairs || [], error: '' };
+            return next;
+          });
+        } catch (err) {
+          setDescPairs(function (prev) {
+            const next = Object.assign({}, prev);
+            next[id] = { loading: false, pairs: [], error: String((err && err.message) || err) };
+            return next;
+          });
+        }
+      }
+
       async function importPlanFile(file) {
         setPlanNotice('正在读文档…');
         try {
@@ -955,37 +983,6 @@ window.__ModuleLoader__.load({
           setPlanNotice('已删除');
         } catch (err) {
           setPlanNotice(String((err && err.message) || err));
-        }
-      }
-
-      async function syncAssignments(silent) {
-        if (!silent) setRefreshing(true);
-        if (!silent) setPlanNotice('正在从 CN 拉作业…');
-        const seq = ++planSeq.current;
-        try {
-          const response = await fetch(ENGINE + '/plan/refresh', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: '{}',
-          });
-          const data = await response.json();
-          if (!response.ok || data.error) throw new Error(data.error || '同步失败');
-          if (seq !== planSeq.current) return;
-          setPlan({ items: data.items || [], loading: false, error: '' });
-          setUpdatedAt(new Date().toTimeString().slice(0, 8));
-          const failed = (data.errors || []).length;
-          setPlanNotice('已同步 ' + (data.count || 0) + ' 项作业' + (failed ? '（' + failed + ' 门课没拉到）' : ''));
-        } catch (err) {
-          const message = String((err && err.message) || err);
-          if (silent) {
-            setPlanNotice('还没同步过 CN 作业：点「同步作业」试试（未登录会失败）');
-            loadPlan();
-          } else {
-            setPlan(function (prev) { return Object.assign({}, prev, { loading: false, error: message }); });
-            setPlanNotice('');
-          }
-        } finally {
-          if (!silent) setTimeout(function () { setRefreshing(false); }, 600);
         }
       }
 
@@ -1913,7 +1910,13 @@ window.__ModuleLoader__.load({
                       ? '显示已完成（' + plan.items.filter(function (i) { return i.done; }).length + '）'
                       : '只看未完成',
                 ),
-                h(Button, { onClick: function () { syncAssignments(false); }, primary: true }, refreshing ? '同步中…' : '同步作业'),
+                h(Button, {
+                  primary: true,
+                  onClick: function () {
+                    const input = document.getElementById('ss-plan-upload');
+                    if (input) input.click();
+                  },
+                }, '导入文档'),
                 h(Button, { onClick: function () { loadPlan(true); } }, '刷新'),
               ),
             },
@@ -1969,14 +1972,8 @@ window.__ModuleLoader__.load({
                   if (file) importPlanFile(file);
                 },
               }),
-              h(Button, {
-                onClick: function () {
-                  const input = document.getElementById('ss-plan-upload');
-                  if (input) input.click();
-                },
-              }, '导入文档'),
               h('span', { style: { fontSize: 11, color: C.muted } },
-                '课程大纲 / 作业说明都行：txt、docx、pdf、图片'),
+                '导入：课程大纲 / 作业说明都行，txt、docx、pdf、图片'),
             ),
             plan.items.length === 0 && !plan.loading && !plan.error
               ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
@@ -2065,11 +2062,13 @@ window.__ModuleLoader__.load({
                                 type: 'button',
                                 onClick: function (event) {
                                   event.stopPropagation();
+                                  const opening = !openDesc[item.id];
                                   setOpenDesc(function (prev) {
                                     const next = Object.assign({}, prev);
-                                    next[item.id] = !next[item.id];
+                                    next[item.id] = opening;
                                     return next;
                                   });
+                                  if (opening) loadDescPairs(item.id);
                                 },
                                 style: chipStyle,
                               }, openDesc[item.id] ? '收起要点' : '要点')
@@ -2104,16 +2103,44 @@ window.__ModuleLoader__.load({
                             : null,
                         ),
                         openDesc[item.id] && item.desc
-                          ? h('div', {
-                              style: {
-                                fontSize: 12,
-                                color: C.muted,
-                                lineHeight: 1.6,
-                                paddingTop: 2,
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
+                          ? h(
+                              'div',
+                              {
+                                style: {
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 6,
+                                  paddingTop: 4,
+                                  fontSize: 12,
+                                  lineHeight: 1.65,
+                                  wordBreak: 'break-word',
+                                },
                               },
-                            }, item.desc)
+                              (function () {
+                                const job = descPairs[item.id] || {};
+                                const pairs = job.pairs || [];
+                                if (pairs.length) {
+                                  return pairs.map(function (pair, index) {
+                                    return h(
+                                      'div',
+                                      { key: index, style: { display: 'flex', flexDirection: 'column', gap: 1 } },
+                                      h('div', { style: { color: C.muted } }, pair.src),
+                                      pair.dst
+                                        ? h('div', { style: { color: C.text } }, pair.dst)
+                                        : null,
+                                    );
+                                  });
+                                }
+                                return [
+                                  h('div', { key: 'en', style: { color: C.muted } }, item.desc),
+                                  job.loading
+                                    ? h('div', { key: 'l', style: { color: C.muted, fontSize: 11 } }, '正在生成中英对照…')
+                                    : job.error
+                                      ? h('div', { key: 'e', style: { color: C.muted, fontSize: 11 } }, job.error)
+                                      : null,
+                                ];
+                              })(),
+                            )
                           : null,
                         (item.doc || item.url)
                           ? h(
