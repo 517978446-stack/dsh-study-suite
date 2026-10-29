@@ -2417,7 +2417,15 @@ def back_check(text, translated, direction, beam):
     return {"back": back, "similarity": similarity(text, back)}
 
 
-HTML_TAG_RE = re.compile(r"</?[a-zA-Z][a-zA-Z0-9]{0,10}(\s[^<>]{0,200})?/?>")
+# 只认常见 HTML 标签，属性必须是 name=value 形式：
+# 否则 `if (a <b && c> d)` 里的 `<b && c>` 会被当成标签整段删掉
+HTML_TAG_RE = re.compile(
+    r"</?(?:p|br|div|span|b|i|u|strong|em|a|ul|ol|li|h[1-6]|table|thead|tbody|tr|td|th|"
+    r"pre|code|blockquote|img|hr|font|sup|sub|small|big|section|article|header|footer|"
+    r"figure|figcaption)"
+    r"(?:\s+[a-zA-Z_:][-\w:.]*\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))*\s*/?>",
+    re.I,
+)
 
 
 def split_units(text):
@@ -3940,14 +3948,20 @@ class Handler(BaseHTTPRequestHandler):
                 plan.setdefault("state", {})
                 plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
                 save_plan(plan)
+                notes_root = os.path.realpath(NOTES_DIR)
                 for item in gone:
                     doc = (item.get("doc") or "").strip()
-                    if not doc or not doc.startswith(os.path.realpath(NOTES_DIR)):
+                    # 两边都取 realpath：/tmp 在 macOS 上是指向 /private/tmp 的符号链接，
+                    # 直接比字符串会把「该删」的判定成「不在 notes 里」而跳过
+                    doc_real = os.path.realpath(doc) if doc else ""
+                    if not doc_real or not doc_real.startswith(notes_root + os.sep):
                         continue
-                    still_used = any((other.get("doc") or "") == doc for other in kept)
-                    if not still_used and os.path.exists(doc):
+                    still_used = any(
+                        os.path.realpath(other.get("doc") or "") == doc_real for other in kept
+                    )
+                    if not still_used and os.path.exists(doc_real):
                         try:
-                            os.remove(doc)
+                            os.remove(doc_real)
                         except OSError:
                             pass
                 self._json({"ok": True, "items": load_plan()["items"]})
