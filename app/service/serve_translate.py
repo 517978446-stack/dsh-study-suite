@@ -25,6 +25,7 @@ Accuracy features:
 """
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import difflib
+import contextlib
 import datetime
 import hashlib
 import pathlib
@@ -33,6 +34,7 @@ import io
 import json
 import math
 import statistics
+import tempfile
 import subprocess
 import os
 import re
@@ -1044,10 +1046,7 @@ def load_timetable():
 
 
 def save_timetable(data):
-    tmp = TIMETABLE_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(data, handle, ensure_ascii=False, indent=2)
-    os.replace(tmp, TIMETABLE_FILE)
+    write_json_atomic(TIMETABLE_FILE, data)
 
 
 def normalize_class(item):
@@ -1708,6 +1707,25 @@ def build_minutes(segments):
     return {"minutes": data, "path": path, "transcript": transcript}
 
 
+_DATA_LOCK = threading.RLock()
+
+
+def write_json_atomic(path, data):
+    """写临时文件再 replace：唯一文件名，多个线程同时写也不会抢同一个 .tmp。"""
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def read_plan_file():
     """plan.json 的原始内容（手工待办在 items 里，勾选状态在 state 里）。"""
     if not os.path.exists(PLAN_FILE):
@@ -1801,10 +1819,7 @@ def load_plan():
 
 
 def save_plan(plan):
-    tmp = PLAN_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(plan, handle, ensure_ascii=False, indent=2)
-    os.replace(tmp, PLAN_FILE)
+    write_json_atomic(PLAN_FILE, plan)
 
 
 def extract_text(filename, data):
@@ -3357,8 +3372,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
+        # ThreadingHTTPServer 每个请求一个线程：/plan/* 和 /timetable/* 都是
+        # 「读 plan.json -> 改 -> 写回」，不串行就会互相覆盖（实测并发 8 个丢 4 条）
+        path = self.path or ""
+        lock = _DATA_LOCK if ("/plan/" in path or "/timetable/" in path) else contextlib.nullcontext()
         try:
-            self._handle_post()
+            with lock:
+                self._handle_post()
         except BadRequest as err:
             self._json({"error": str(err)}, 400)
         except Exception as err:
