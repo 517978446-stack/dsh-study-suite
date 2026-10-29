@@ -716,7 +716,8 @@ def brief_facts(text):
             continue          # 总分/占位不是评分项
         before = text[max(0, match.start() - 160):match.start()]
         before = re.sub(r"\s+", " ", before).strip(" .:-")
-        label = before.split(".")[-1].split(":")[-1].strip()
+        # 取最后一段做标签：逗号/分号也要切，否则会写成「Content 40%, Structure」
+        label = re.split(r"[,.;:]", before)[-1].strip()
         label = " ".join(label.split()[-8:]).strip(" (")
         if not label or label.endswith("(") or len(label) < 4:
             continue          # 只剩表头/括号的残片
@@ -733,6 +734,20 @@ def brief_facts(text):
         if re.search(r"\b%s\b" % fmt, text, re.I) and fmt not in facts["formats"]:
             facts["formats"].append(fmt)
     return facts
+
+
+def fallback_brief(facts):
+    """没有本地大模型时的作业说明解析：只给正则抓到的硬信息，不编造。"""
+    parts = facts["wordRanges"] or facts["wordCounts"]
+    words = " + ".join(part.replace(" words", "") for part in parts) + " 词" if parts else "未说明"
+    return {
+        "字数要求": words,
+        "必须包含": [],
+        "评分点": facts["rubric"],
+        "提交格式": " / ".join(facts["formats"]),
+        "注意事项": ["这台机器没连上本地大模型，下面这些是直接从原文里抓出来的，可能不全"],
+        "source": "rules",
+    }
 
 
 def run_brief(path):
@@ -753,17 +768,27 @@ def run_brief(path):
     except Exception:
         pass
 
-    # 平台检查放在 import 之前：Windows 上 ImportError 会变成 500
-    state = llm_engine()
-    from mlx_lm import generate
+    # 没有本地大模型时不能直接崩：先用正则抓到的硬信息给一份保底结果
+    try:
+        state = llm_engine()
+        if state.get("mode") != "http":
+            from mlx_lm import generate
+        else:
+            generate = None
+    except Exception as err:
+        sys.stderr.write("[brief] no llm: %s\n" % err)
+        return fallback_brief(facts)
 
     messages = [
         {"role": "system", "content": BRIEF_PROMPT},
         {"role": "user", "content": text[:7000]},
     ]
     messages[1]["content"] = text[:12000] + "\n\nFACTS:\n" + json.dumps(facts, ensure_ascii=False)
-    prompt = state["tokenizer"].apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    raw_out = generate(state["model"], state["tokenizer"], prompt=prompt, max_tokens=700, verbose=False)
+    if state.get("mode") == "http":
+        raw_out = _http_chat(BRIEF_PROMPT, messages[1]["content"], 700)
+    else:
+        prompt = state["tokenizer"].apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        raw_out = generate(state["model"], state["tokenizer"], prompt=prompt, max_tokens=700, verbose=False)
 
     data = None
     start, end = raw_out.find("{"), raw_out.rfind("}")
@@ -2377,8 +2402,15 @@ def back_check(text, translated, direction, beam):
     return {"back": back, "similarity": similarity(text, back)}
 
 
+HTML_TAG_RE = re.compile(r"</?[a-zA-Z][a-zA-Z0-9]{0,10}(\s[^<>]{0,200})?/?>")
+
+
 def split_units(text):
     """Paragraphs first; over-long ones fall back to sentence splitting."""
+    # 从网页 / docx 粘贴过来的文本常带 HTML 标签，模型会把 </p> 翻成乱码，
+    # 所以先剥掉标签再切分（纯代码里的 <> 不会被这么严格的模式误删）
+    if text and HTML_TAG_RE.search(text):
+        text = HTML_TAG_RE.sub(" ", text)
     units = []
     for block in re.split(r"\n\s*\n", text):
         block = block.strip()
@@ -3768,6 +3800,12 @@ class Handler(BaseHTTPRequestHandler):
                     fresh.append(row)
 
                 if not fresh:
+                    # 一条都没新增（多半是同一份文档又导了一次）：刚存的文件别留着
+                    if saved_path:
+                        try:
+                            os.remove(saved_path)
+                        except OSError:
+                            pass
                     self._json({"ok": True, "count": 0, "source": source, "added": 0,
                                 "items": load_plan()["items"], "text": text[:800]})
                     return
@@ -3825,6 +3863,11 @@ class Handler(BaseHTTPRequestHandler):
                     raise BadRequest("截止日期用 YYYY-MM-DD")
                 plan = read_plan_file()
                 items = [item for item in (plan.get("items") or []) if isinstance(item, dict)]
+                # 同名又同截止日的，基本是重复点了一次
+                for existing in items:
+                    if (existing.get("title") or "").strip().lower() == title.lower() and \
+                            (existing.get("due") or "") == due:
+                        raise BadRequest("已经有同名待办了：%s" % title[:40])
                 # 英文待办自动配中文，跟 CN 拉下来的一样
                 title_zh = translate_short_batch([title])[0] if re.search(r"[A-Za-z]{3}", title) else ""
                 course_zh = translate_short_batch([course])[0] if re.search(r"[A-Za-z]{3}", course) else ""
@@ -3871,10 +3914,22 @@ class Handler(BaseHTTPRequestHandler):
                         self._json({"ok": True, "items": load_plan()["items"]})
                         return
                     raise BadRequest("没有这条待办: %s" % item_id)
+                # 这条待办独占的文档也一起清掉，别在 notes 里越攒越多
+                gone = [item for item in items if item.get("id") == item_id]
                 plan["items"] = kept
                 plan.setdefault("state", {})
                 plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
                 save_plan(plan)
+                for item in gone:
+                    doc = (item.get("doc") or "").strip()
+                    if not doc or not doc.startswith(os.path.realpath(NOTES_DIR)):
+                        continue
+                    still_used = any((other.get("doc") or "") == doc for other in kept)
+                    if not still_used and os.path.exists(doc):
+                        try:
+                            os.remove(doc)
+                        except OSError:
+                            pass
                 self._json({"ok": True, "items": load_plan()["items"]})
             except BadRequest as err:
                 self._json({"error": str(err)}, 400)
