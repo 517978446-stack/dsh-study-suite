@@ -453,6 +453,9 @@ window.__ModuleLoader__.load({
             loading: false,
             error: data.error || '',
           });
+          if (data.skipped) {
+            setNotice('有 ' + data.skipped + ' 条课表格式不对，已忽略（重新添加即可）');
+          }
         } catch (err) {
           setTimetable({ classes: [], loading: false, error: '读不到课表' });
         }
@@ -506,7 +509,11 @@ window.__ModuleLoader__.load({
           const saved = await saveResp.json()
           if (!saveResp.ok || saved.error) throw new Error(saved.error || '保存失败')
           setTimetable({ classes: saved.classes || merged, loading: false, error: '' })
-          setNotice('识别到 ' + fresh.length + ' 节课程，已加入课表')
+          if (saved.skipped) {
+            setNotice('识别到 ' + fresh.length + ' 节，已加入；有 ' + saved.skipped + ' 条格式不对被跳过（' + (saved.skipReason || '') + '）')
+          } else {
+            setNotice('识别到 ' + fresh.length + ' 节课程，已加入课表')
+          }
         } catch (err) {
           setTimetable(function (prev) {
             return Object.assign({}, prev, { loading: false, error: String((err && err.message) || err) })
@@ -2774,6 +2781,7 @@ window.__ModuleLoader__.load({
             src: text,
             dst: (translated && translated.text) || '',
             segments: asrData.segments || [],
+            speaker: ((asrData.segments || [])[0] || {}).speaker || '',
             speakers: asrData.speakers || 1,
             at: Date.now(),
           };
@@ -4868,7 +4876,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.15.1'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.15.2'),
         ),
         h(
           'div',

@@ -3246,7 +3246,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         if route in ("/timetable", "/schedule"):
             try:
-                self._json(json.load(open(TIMETABLE_FILE, encoding="utf-8")))
+                data = json.load(open(TIMETABLE_FILE, encoding="utf-8"))
+                # 文件里可能残留格式坏掉的历史条目：读的时候过滤掉，
+                # 别让面板因为它们整页显示红字或渲染 undefined
+                valid, bad = [], 0
+                for item in data.get("classes") or []:
+                    try:
+                        valid.append(normalize_class(item))
+                    except BadRequest:
+                        bad += 1
+                data["classes"] = valid
+                if bad:
+                    data["skipped"] = bad
+                self._json(data)
             except FileNotFoundError:
                 # 空课表不是错误：第一次打开面板就显示红字会让人以为坏了
                 self._json({"classes": []})
@@ -3469,9 +3481,21 @@ class Handler(BaseHTTPRequestHandler):
                 items = payload_in.get("classes") or []
                 if not isinstance(items, list):
                     raise BadRequest("classes 必须是数组")
-                cleaned = [normalize_class(x) for x in items][:40]
+                # 逐条规整：一条格式坏掉不能拖垮整张表（否则导入一次就全失败）
+                cleaned = []
+                skipped = []
+                for item in items[:40]:
+                    try:
+                        cleaned.append(normalize_class(item))
+                    except BadRequest as err:
+                        skipped.append(str(err))
                 save_timetable({"classes": cleaned})
-                self._json({"ok": True, "classes": cleaned})
+                self._json({
+                    "ok": True,
+                    "classes": cleaned,
+                    "skipped": len(skipped),
+                    "skipReason": skipped[0] if skipped else "",
+                })
             except BadRequest as err:
                 self._json({"error": str(err)}, 400)
             except Exception as err:
