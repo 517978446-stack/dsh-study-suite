@@ -29,6 +29,8 @@ window.__ModuleLoader__.load({
           // fastTranslate 缺省视为可用（老版本服务没有这个字段）
           fastTranslate: c.fastTranslate !== false,
           mtError: c.mtError || '',
+          // 说话人分离：Windows 装 -Full 才有，老服务没有这个字段按可用算
+          speakerDiarization: c.speakerDiarization !== false,
           known: true,
         };
       }
@@ -728,6 +730,7 @@ window.__ModuleLoader__.load({
         if (caps.imageOcr === false) list.push('图片识别');
         if (caps.pdfOcr === false) list.push('扫描件 OCR');
         if (caps.asr === false) list.push('语音转写');
+        if (caps.speakerDiarization === false) list.push('说话人分离');
         return list;
       })();
       const installCommand = caps.platform === 'macos'
@@ -4876,7 +4879,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.18'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.19'),
         ),
         h(
           'div',

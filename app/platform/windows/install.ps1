@@ -151,8 +151,45 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($Full) {
   Write-Host "== 安装语音依赖"
-  & $Py @PyArgs -m pip install --quiet --upgrade --target $Pylibs faster-whisper
+  & $Py @PyArgs -m pip install --quiet --upgrade --target $Pylibs faster-whisper sherpa-onnx
   if ($LASTEXITCODE -ne 0) { Write-Host "语音依赖安装失败，翻译仍可使用。" }
+
+  # 说话人分离（区分「谁在说话」）需要两个模型：声纹嵌入 + 说话人切分
+  Write-Host "== 下载说话人分离模型（约 33MB）"
+  $DiarDir = Join-Path $Base "models\diar"
+  New-Item -ItemType Directory -Force -Path $DiarDir | Out-Null
+
+  $CampPlus = Join-Path $DiarDir "campplus.onnx"
+  if (Test-Path $CampPlus) {
+    Write-Host "   声纹模型已存在，跳过"
+  } else {
+    try {
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 900 `
+        -Uri "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx" `
+        -OutFile $CampPlus
+      Write-Host "   声纹模型完成"
+    } catch {
+      Write-Host "   声纹模型下载失败：说话人分离不可用（其余功能不受影响）"
+    }
+  }
+
+  $SegModel = Join-Path $DiarDir "sherpa-onnx-pyannote-segmentation-3-0\model.onnx"
+  if (Test-Path $SegModel) {
+    Write-Host "   切分模型已存在，跳过"
+  } else {
+    $SegTar = Join-Path $env:TEMP "seg.tar.bz2"
+    try {
+      Invoke-WebRequest -UseBasicParsing -TimeoutSec 900 `
+        -Uri "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2" `
+        -OutFile $SegTar
+      # Windows 没有 tar -xjf 的稳定支持，用 Python 的 tarfile 解压 bz2
+      & $Py @PyArgs -c "import tarfile,sys; tarfile.open(sys.argv[1],'r:bz2').extractall(sys.argv[2])" $SegTar $DiarDir
+      Remove-Item $SegTar -Force -ErrorAction SilentlyContinue
+      if (Test-Path $SegModel) { Write-Host "   切分模型完成" } else { Write-Host "   切分模型解压后结构不对：$SegModel" }
+    } catch {
+      Write-Host "   切分模型下载失败：说话人分离不可用（其余功能不受影响）"
+    }
+  }
 }
 
 # ---- 翻译模型 ----

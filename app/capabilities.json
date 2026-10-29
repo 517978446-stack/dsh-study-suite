@@ -8,7 +8,7 @@
     "pdfOcr": true,
     "asr": "partial",
     "llm": "optional-http",
-    "speakerDiarization": false,
+    "speakerDiarization": "optional",
     "reminder": true,
     "watchdog": true
   },

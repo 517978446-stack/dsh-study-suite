@@ -134,7 +134,7 @@ python "%USERPROFILE%\.dsh-study-suite\smoke.py"
 | AI 率检测（文本 / Word / 文字版 PDF） | ✅ | ✅ |
 | 图片、扫描版 PDF | ✅ | ❌ 需另装 OCR 组件 |
 | 语音转写 | ✅ | ⚠️ 需 `-Full`；首次使用自动下载模型 |
-| 说话人 A/B 分离 | ✅ | ❌ Windows 未打包该模型 |
+| 说话人 A/B 分离 | ✅ | ✅ 需 `-Full`（约 33MB 模型） |
 | 精准翻译 7B | ✅ | ❌ 只能用「快速」引擎（术语表也只在 7B 下参与翻译） |
 | 课程动态 | ✅ 需你自己的 CN 登录 | ✅ 同左 |
 
@@ -195,6 +195,6 @@ service.log          日志
 | PDF 导出 | Windows 上找 Edge/Chrome 的多个常见路径；打印参数会在 `--headless=new` 失败时回退 `--headless` |
 | 7B 精准翻译 | **不可用**（MLX 只有 macOS），会自动退回快速引擎 |
 | 图片 / 扫描件 OCR | **不可用**（依赖 macOS 系统能力） |
-| 说话人分离 | **不可用**（模型没打包进 Windows 版） |
+| 说话人分离 | ✅ 装 `-Full` 可用 |
 
 如果安装失败，让朋友跑 `doctor.ps1` 把输出发我，里面只有版本号、路径和报错。

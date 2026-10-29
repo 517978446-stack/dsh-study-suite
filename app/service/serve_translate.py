@@ -2187,6 +2187,21 @@ def read_wav_bytes(body):
     return audio
 
 
+def diar_ready():
+    """说话人分离能不能用：依赖装了 + 两个模型都在。
+
+    和 asr 一样只报「装没装」，不报「加载没加载」—— 首次调用才加载，
+    拿加载状态判断会让刚装完的人以为功能坏了。
+    """
+    try:
+        import sherpa_onnx  # noqa: F401
+    except Exception:
+        return False
+    return os.path.exists(os.path.join(DIAR_DIR, "campplus.onnx")) and os.path.exists(
+        os.path.join(DIAR_DIR, "sherpa-onnx-pyannote-segmentation-3-0", "model.onnx")
+    )
+
+
 def diarizer():
     """Lazy-load the offline speaker diarization pipeline."""
     if "pipe" not in _DIAR:
@@ -3359,6 +3374,8 @@ class Handler(BaseHTTPRequestHandler):
                         "asrModelReady": os.path.isdir(os.path.join(MODELS_DIR, "whisper")),
                         "asrModel": ASR_MODEL_NAME,
                         "asrDraftModel": ASR_DRAFT_MODEL,
+                        # 说话人分离（区分「谁在说话」）：装 -Full 才有
+                        "speakerDiarization": diar_ready(),
                     },
                     "asr": {"model": ASR_MODEL_NAME, "draft": ASR_DRAFT_MODEL, "loaded": sorted((_ASR.get("models") or {}).keys())},
                     "llm": {

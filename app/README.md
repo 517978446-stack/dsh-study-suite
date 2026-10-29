@@ -64,7 +64,7 @@ DeepSeek Harness 的「学习助手」面板：**课程 / 英中互译 / 语音�
 | 精准翻译 7B | ✅ 可选：装 [Ollama](https://ollama.com) 后自动启用 | ✅ 本机 MLX |
 | 术语表 | ⚠️ 只在 7B 精准模式下生效 | 同左 |
 | 语音转写 | 需 `-Full`；模型首次使用时下载 | 同左 |
-| 说话人分离 | ❌ 未打包 | 需 `--full` |
+| 说话人分离 | ✅ 需 `-Full` | 需 `--full` |
 | 图片 / 扫描件 OCR | ✅ RapidOCR（本机离线） | ✅ 系统 Vision |
 | CN 一键登录 | ✅ 需 Edge/Chrome | ✅ 需 Edge/Chrome |
 

@@ -86,6 +86,27 @@
 - `release.yml` 支持 `macos-v*` 标签；版本号以 VERSION 文件为准，标签只负责触发
 - 标签约定：macOS `macos-v7.14.0`、Windows `win-v7.13.3`（后者由维护者自己打）
 
+## 7.13.19 — 2026-10-29（Windows）
+
+**补上 macOS 有、Windows 缺的那个功能：说话人分离**
+
+对照 macOS 7.15.x 逐项核了一遍，代码层（`app/service/` 与 `client.js`）两边是同一份，
+`CN_PLAN_CLASSES`、`/timetable/save` 的逐条校验与 `skipped`、四个附加字段的保留、
+ASR 的 `speaker` 字段都在。真正缺的只有**说话人分离**：mac 装 `sherpa-onnx`
+和两个模型，Windows 的 `-Full` 一直没装，`capabilities.json` 里也写死 `false`。
+
+现在：
+
+- `install.ps1 -Full` 加装 `sherpa-onnx`，并下载两个模型到 `models/diar/`：
+  - 声纹嵌入 `campplus.onnx`（约 28MB）
+  - 说话人切分 `sherpa-onnx-pyannote-segmentation-3-0`（约 7MB，bz2 用 Python tarfile 解）
+- `/health` 的 `capabilities` 新增 `speakerDiarization`：依赖 + 两个模型都在才报 true
+- 面板「少装了哪几样」清单把说话人分离也算进去，缺了就提示装 `-Full`
+- `capabilities.json` 里 Windows 从 `false` 改成 `optional`，README / INSTALL 的能力表同步
+
+实测（本机装了一遍）：上传一段 TTS 语音 → `/asr` 8.8 秒返回
+「Good morning everyone…」，2 个 segment 都标上「说话人A」。
+
 ## 7.13.18 — 2026-10-29（Windows）
 
 **合并 macOS 侧对 7.13.16 的两处修正**
