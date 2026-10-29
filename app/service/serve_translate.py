@@ -3503,7 +3503,8 @@ class Handler(BaseHTTPRequestHandler):
                                 due = ""
                         prev = previous.get(item_id) or {}
                         kind = item.get("type") or ""
-                        note = ("截止 " + due) if due else kind
+                        # 日期单独由 due 显示，note 只放类型，否则面板上会看到两个「截止 12-31」
+                        note = kind
                         title_zh = translated[cursor] if cursor < len(translated) else ""
                         cursor += 1
                         if not title_zh:

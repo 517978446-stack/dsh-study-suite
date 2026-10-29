@@ -762,6 +762,7 @@ window.__ModuleLoader__.load({
       const [updatedAt, setUpdatedAt] = React.useState('');
       const [planNotice, setPlanNotice] = React.useState('');
       const [openDesc, setOpenDesc] = React.useState({});
+      const planSeq = React.useRef(0);
       const [newItem, setNewItem] = React.useState({ course: '', title: '', due: '' });
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
@@ -846,9 +847,9 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         loadDigest();
-        // 只走一条链：先静默同步 CN 作业，失败才回落到本地 plan.json。
-        // 之前 loadPlan 和 syncAssignments 并行，谁后返回谁说了算，
-        // 慢的时候会看到空列表把刚同步的数据盖掉
+        // 先把本地 plan.json 显示出来（打开面板就有内容），再后台同步 CN。
+        // planSeq 保证「后发的请求赢」，慢回来的旧请求不会盖掉新数据
+        loadPlan();
         syncAssignments(true);
         fetch(ENGINE + '/hidden', { cache: 'no-store' })
           .then(function (r) { return r.json(); })
@@ -862,12 +863,15 @@ window.__ModuleLoader__.load({
 
       async function loadPlan(manual) {
         if (manual) setRefreshing(true);
+        const seq = ++planSeq.current;
         try {
           const response = await fetch(ENGINE + '/plan?t=' + Date.now(), { cache: 'no-store' });
           const data = await response.json();
+          if (seq !== planSeq.current) return;
           setPlan({ items: data.items || [], loading: false, error: '' });
           if (manual) setUpdatedAt(new Date().toTimeString().slice(0, 8));
         } catch (err) {
+          if (seq !== planSeq.current) return;
           setPlan({ items: [], loading: false, error: '读不到课程待办' });
         } finally {
           if (manual) setTimeout(function () { setRefreshing(false); }, 600);
@@ -957,6 +961,7 @@ window.__ModuleLoader__.load({
       async function syncAssignments(silent) {
         if (!silent) setRefreshing(true);
         if (!silent) setPlanNotice('正在从 CN 拉作业…');
+        const seq = ++planSeq.current;
         try {
           const response = await fetch(ENGINE + '/plan/refresh', {
             method: 'POST',
@@ -965,6 +970,7 @@ window.__ModuleLoader__.load({
           });
           const data = await response.json();
           if (!response.ok || data.error) throw new Error(data.error || '同步失败');
+          if (seq !== planSeq.current) return;
           setPlan({ items: data.items || [], loading: false, error: '' });
           setUpdatedAt(new Date().toTimeString().slice(0, 8));
           const failed = (data.errors || []).length;
@@ -1450,6 +1456,12 @@ window.__ModuleLoader__.load({
 
       async function openCheck(item, path, target) {
         lastCheckFileRef.current = null;   // 改用附件时，别让「重新检查」又跑回上次上传的文件
+        if (!path) {
+          // 没有现成文档：直接开「选我的草稿」界面，
+          // 之前这里照样去打 /check，弹窗里只会显示「缺少 path」
+          setPanelModal({ type: 'check', item: item, loading: false, data: null, error: '', idle: true });
+          return;
+        }
         const token = ++modalTokenRef.current;
         setPanelModal({ type: 'check', item: item, loading: true, data: null, error: '' });
         try {
@@ -2070,6 +2082,15 @@ window.__ModuleLoader__.load({
                             },
                             style: chipStyle,
                           }, '检查'),
+                          item.url
+                            ? h('a', {
+                                href: item.url,
+                                target: '_blank',
+                                rel: 'noreferrer',
+                                onClick: function (event) { event.stopPropagation(); },
+                                style: Object.assign({ textDecoration: 'none' }, chipStyle),
+                              }, '打开课程')
+                            : null,
 
                           item.kind === 'custom'
                             ? h('button', {
@@ -2271,28 +2292,7 @@ window.__ModuleLoader__.load({
                                 }
                                 return chips;
                               })(),
-                              item.url
-                                ? h(
-                                    'a',
-                                    {
-                                      href: item.url,
-                                      target: '_blank',
-                                      rel: 'noreferrer',
-                                      style: {
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        height: 22,
-                                        padding: '0 8px',
-                                        borderRadius: 11,
-                                        border: '1px solid ' + C.border,
-                                        color: C.muted,
-                                        fontSize: 11,
-                                        textDecoration: 'none',
-                                      },
-                                    },
-                                    '打开课程',
-                                  )
-                                : null,
+
                             )
                           : null,
                       ),
