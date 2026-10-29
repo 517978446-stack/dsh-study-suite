@@ -913,6 +913,31 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async function importPlanFile(file) {
+        setPlanNotice('正在读文档…');
+        try {
+          const buffer = await file.arrayBuffer();
+          const response = await fetch(ENGINE + '/plan/import', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/octet-stream',
+              'x-filename': file.name || 'plan.txt',
+            },
+            body: buffer,
+          });
+          const data = await response.json();
+          if (!response.ok || data.error) throw new Error(data.error || '导入失败');
+          setPlan({ items: data.items || [], loading: false, error: '' });
+          const source = data.source === 'llm' ? '大模型' : '按关键词';
+          setPlanNotice(
+            '从文档里认出 ' + (data.count || 0) + ' 条，新加 ' + (data.added || 0) +
+            ' 条（' + source + '提取）'
+          );
+        } catch (err) {
+          setPlanNotice(String((err && err.message) || err));
+        }
+      }
+
       async function removePlanItem(id) {
         try {
           const response = await fetch(ENGINE + '/plan/remove', {
@@ -1917,6 +1942,29 @@ window.__ModuleLoader__.load({
                 },
               }),
               h(Button, { onClick: addPlanItem }, '添加待办'),
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+              h('input', {
+                type: 'file',
+                accept: '.txt,.md,.csv,.docx,.pdf,.png,.jpg,.jpeg,.webp',
+                style: { display: 'none' },
+                id: 'ss-plan-upload',
+                onChange: function (event) {
+                  const file = event.target.files && event.target.files[0];
+                  event.target.value = '';
+                  if (file) importPlanFile(file);
+                },
+              }),
+              h(Button, {
+                onClick: function () {
+                  const input = document.getElementById('ss-plan-upload');
+                  if (input) input.click();
+                },
+              }, '导入文档'),
+              h('span', { style: { fontSize: 11, color: C.muted } },
+                '课程大纲 / 作业说明都行：txt、docx、pdf、图片'),
             ),
             plan.items.length === 0 && !plan.loading && !plan.error
               ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },

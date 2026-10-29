@@ -1233,6 +1233,139 @@ def parse_timetable(text, blocks=None):
     return out
 
 
+PLAN_IMPORT_PROMPT = """你是一个作业清单提取器。用户给你一段课程大纲或作业要求的文字，
+可能中英混杂、排版乱。只提取里面**明确提到**的作业 / 测验 / 考试 / 项目 / 论文 / 阅读任务。
+
+输出**纯 JSON 数组**，不要解释、不要 Markdown 代码块：
+[{"course": "课程名或代码，没有就空字符串", "title": "作业标题", "due": "YYYY-MM-DD 或空字符串"}]
+
+规则：
+- 没提到的不要编造
+- 日期能确定才填，只用 YYYY-MM-DD
+- 最多 30 条
+"""
+
+MONTH_NAMES = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+PLAN_KEYWORDS = re.compile(
+    r"\b(assignment|homework|coursework|due|deadline|submission|submit|quiz|test|"
+    r"exam|midterm|final|project|essay|report|presentation|portfolio|paper|"
+    r"作业|截止|提交|测验|考试|论文|报告|项目)\b",
+    re.I,
+)
+
+
+def find_due(text):
+    """从一行文字里找出日期，统一成 YYYY-MM-DD；找不到返回空串。"""
+    text = text or ""
+
+    def build(year, month, day):
+        try:
+            value = datetime.date(int(year), int(month), int(day))
+        except (TypeError, ValueError):
+            return ""
+        return value.isoformat()
+
+    match = re.search(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", text)
+    if match:
+        return build(match.group(1), match.group(2), match.group(3))
+
+    match = re.search(r"\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})\b", text)
+    if match:
+        return build(match.group(3), match.group(2), match.group(1))
+
+    lowered = text.lower()
+    match = re.search(
+        r"\b(\d{1,2})\s*(?:st|nd|rd|th)?\s+"
+        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s*,?\s*(20\d{2})",
+        lowered,
+    )
+    if match:
+        return build(match.group(3), MONTH_NAMES.get(match.group(2), 0), match.group(1))
+
+    match = re.search(
+        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+"
+        r"(\d{1,2})\s*(?:st|nd|rd|th)?\s*,?\s*(20\d{2})",
+        lowered,
+    )
+    if match:
+        return build(match.group(3), MONTH_NAMES.get(match.group(1), 0), match.group(2))
+
+    return ""
+
+
+def plan_items_from_text(text):
+    """规则版提取：扫到含作业关键词的行就当一条待办。
+
+    大模型不在线时只能这样——宁可多给几条让用户删，也不要一条都不给。
+    """
+    items = []
+    seen = set()
+    for raw_line in (text or "").splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip(" \t·-•*|")
+        if len(line) < 8 or len(line) > 240:
+            continue
+        if not PLAN_KEYWORDS.search(line):
+            continue
+        key = line[:48].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(
+            {
+                "course": "",
+                "title": line[:160],
+                "due": find_due(line),
+            }
+        )
+        if len(items) >= 30:
+            break
+    return items
+
+
+def extract_plan_items(text):
+    """文档 → 作业条目。返回 (items, source)，source 是 llm 或 rules。"""
+    text = (text or "").strip()
+    if len(text) < 20:
+        raise BadRequest("文档里的文字太少，提取不出作业")
+
+    try:
+        engine_state = llm_engine()
+        if engine_state.get("mode") == "http":
+            raw = _http_chat(PLAN_IMPORT_PROMPT, text[:8000], 1200)
+            match = re.search(r"\[[\s\S]*\]", raw or "")
+            if match:
+                rows = json.loads(match.group(0))
+                items = []
+                for row in rows[:30] if isinstance(rows, list) else []:
+                    if not isinstance(row, dict):
+                        continue
+                    title = (row.get("title") or "").strip()
+                    if not title:
+                        continue
+                    due = (row.get("due") or "").strip()
+                    items.append(
+                        {
+                            "course": (row.get("course") or "").strip()[:40],
+                            "title": title[:160],
+                            "due": due if re.fullmatch(r"\d{4}-\d{2}-\d{2}", due) else "",
+                        }
+                    )
+                if items:
+                    return items, "llm"
+    except BadRequest:
+        pass
+    except Exception as err:
+        sys.stderr.write("[plan] llm extract failed: %s\n" % err)
+
+    return plan_items_from_text(text), "rules"
+
+
 def translate_short_batch(texts):
     """批量把英文短语译成中文，给待办的「中英对照」用。
 
@@ -3190,7 +3323,7 @@ class Handler(BaseHTTPRequestHandler):
                  "/timetable/add", "/timetable/save", "/timetable/import",
                  "/hidden/toggle",
                  "/aidetect", "/digest/refresh", "/release", "/plan/toggle",
-                 "/plan/refresh", "/plan/add", "/plan/remove")
+                 "/plan/refresh", "/plan/add", "/plan/remove", "/plan/import")
         if route not in known:
             self._json({"error": "unknown endpoint: %s" % route}, 404)
             return
@@ -3395,6 +3528,97 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(err)}, 400)
             except Exception as err:
                 self._json({"error": "抓取作业失败：%s" % err}, 500)
+            return
+
+        if route_path.endswith("/plan/import"):
+            try:
+                if len(raw) < 20:
+                    raise BadRequest("文件是空的")
+                if len(raw) > 20 * 1024 * 1024:
+                    raise BadRequest("文件太大（超过 20MB），先裁一下")
+                filename = header_text(self.headers.get("x-filename")) or "plan.txt"
+                suffix = os.path.splitext(filename)[1].lower() or ".txt"
+                path = os.path.join(SECRETS_DIR, "plan-upload" + suffix)
+                with open(path, "wb") as handle:
+                    handle.write(raw)
+                try:
+                    try:
+                        text = extract_text(filename, raw)
+                    except ImportError as err:
+                        sys.stderr.write("[plan] extract deps missing: %s\n" % err)
+                        raise BadRequest("这台机器没装读文档的依赖，重装时加 -Full")
+                    except BadRequest:
+                        raise
+                    except Exception as err:
+                        sys.stderr.write("[plan] extract failed: %s\n" % err)
+                        raise BadRequest("这份文件读不出文字（扫描件可以传图片试试）")
+                finally:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+
+                items, source = extract_plan_items(text)
+                if not items:
+                    raise BadRequest("这份文档里没找到像作业的条目，换一份试试")
+
+                plan = read_plan_file()
+                existing = [item for item in (plan.get("items") or []) if isinstance(item, dict)]
+                titles = set()
+                for item in existing:
+                    titles.add(str(item.get("title") or "").strip().lower()[:60])
+
+                fresh = []
+                for row in items:
+                    title = (row.get("title") or "").strip()
+                    if not title or title.lower()[:60] in titles:
+                        continue
+                    titles.add(title.lower()[:60])
+                    fresh.append(row)
+
+                if not fresh:
+                    self._json({"ok": True, "count": 0, "source": source, "added": 0,
+                                "items": load_plan()["items"], "text": text[:800]})
+                    return
+
+                translated = translate_short_batch([row["title"] for row in fresh] +
+                                                   [row.get("course") or "" for row in fresh])
+                title_zh = translated[: len(fresh)]
+                course_zh = translated[len(fresh):]
+
+                for index, row in enumerate(fresh):
+                    existing.append(
+                        {
+                            "id": "file:%d:%s" % (int(time.time() * 1000) + index, os.urandom(2).hex()),
+                            "kind": "imported",
+                            "course": (row.get("course") or "")[:40],
+                            "courseZh": course_zh[index] if index < len(course_zh) else "",
+                            "title": row["title"][:200],
+                            "titleZh": title_zh[index] if index < len(title_zh) else "",
+                            "note": "从文档导入",
+                            "due": row.get("due") or "",
+                            "done": False,
+                        }
+                    )
+
+                plan["items"] = existing
+                plan.setdefault("state", {})
+                plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
+                save_plan(plan)
+                self._json(
+                    {
+                        "ok": True,
+                        "count": len(items),
+                        "added": len(fresh),
+                        "source": source,
+                        "items": load_plan()["items"],
+                        "text": text[:800],
+                    }
+                )
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": "导入失败：%s" % err}, 500)
             return
 
         if route_path.endswith("/plan/add"):
