@@ -3693,6 +3693,18 @@ class Handler(BaseHTTPRequestHandler):
                 path = os.path.join(SECRETS_DIR, "plan-upload" + suffix)
                 with open(path, "wb") as handle:
                     handle.write(raw)
+                # 留一份到 notes 下：待办要能指向它，才能点开中英对照
+                keep_dir = os.path.join(NOTES_DIR, "plan-docs")
+                saved_path = ""
+                try:
+                    os.makedirs(keep_dir, exist_ok=True)
+                    safe = re.sub(r"[^\w.\-\u4e00-\u9fff]+", "_", os.path.basename(filename))[:60] or ("plan" + suffix)
+                    saved_path = os.path.join(keep_dir, "%d-%s" % (int(time.time()), safe))
+                    with open(saved_path, "wb") as handle:
+                        handle.write(raw)
+                except Exception as err:
+                    sys.stderr.write("[plan] keep upload failed: %s\n" % err)
+                    saved_path = ""
                 try:
                     try:
                         text = extract_text(filename, raw)
@@ -3749,6 +3761,7 @@ class Handler(BaseHTTPRequestHandler):
                             "titleZh": title_zh[index] if index < len(title_zh) else "",
                             "note": "从文档导入",
                             "due": row.get("due") or "",
+                            "doc": saved_path,
                             "done": False,
                         }
                     )
