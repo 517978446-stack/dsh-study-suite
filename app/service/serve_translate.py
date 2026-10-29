@@ -1233,6 +1233,75 @@ def parse_timetable(text, blocks=None):
     return out
 
 
+def translate_short_batch(texts):
+    """批量把英文短语译成中文，给待办的「中英对照」用。
+
+    引擎没装、模型没下载、或者翻译出垃圾时，一律返回空串 ——
+    待办本身照常显示英文，不能让翻译问题拖垮整个列表。
+    """
+    cleaned = [(text or "").strip() for text in texts]
+    if not any(cleaned) or ctranslate2 is None or spm is None:
+        return ["" for _ in cleaned]
+    out = []
+    try:
+        for offset in range(0, len(cleaned), 8):
+            chunk = [sentence_case(text) for text in cleaned[offset : offset + 8]]
+            pieces = translate_units([piece or " " for piece in chunk], "en_zh", 4)
+            for piece, source in zip(pieces, chunk):
+                out.append(usable_chinese(source, piece))
+    except Exception as err:
+        sys.stderr.write("[plan] translate failed: %s\n" % err)
+        return ["" for _ in cleaned]
+    return out[: len(cleaned)]
+
+
+def sentence_case(text):
+    """CN 上的作业名常是整句大写，opus-mt 翻全大写质量明显更差。
+
+    只做最小规范化：全大写的词转成首字母大写，虚词小写。
+    """
+    text = (text or "").strip()
+    if not text or not any(char.islower() for char in text):
+        small = {"a", "an", "the", "for", "of", "to", "in", "on", "and", "or", "at", "by", "with", "dan", "isu"}
+        words = []
+        for index, word in enumerate(text.split()):
+            if index and word.lower() in small:
+                words.append(word.lower())
+            else:
+                words.append(word.capitalize() if word.isupper() else word)
+        return " ".join(words)
+    return text
+
+
+def usable_chinese(source, translated):
+    """判断这一条翻译是否值得显示 —— 短标题喂给 opus-mt 很容易原样吐回来。
+
+    宁可只显示英文，也不要挂一串「MITTERM ABC123」这种半截垃圾。
+    """
+    text = (translated or "").strip()
+    source = (source or "").strip()
+    if not text:
+        return ""
+    # 没翻成中文（中文字符太少）就丢掉：这是最有用的判据，
+    # 「MITTERM - ABC123 XYZ」这种照抄原文的会被拦下来
+    han = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
+    if han < max(2, len(text) * 0.25):
+        return ""
+    # 和原文几乎一样（只是大小写/标点变了）
+    normalize = lambda value: re.sub(r"[^a-z0-9\u4e00-\u9fff]", "", value.lower())
+    if normalize(text) == normalize(source):
+        return ""
+    return text
+
+
+def course_title(name):
+    """CN 课程名去掉学期和代码前缀：2026-09_ABC123_Introduction -> Introduction。"""
+    text = (name or "").strip()
+    text = re.sub(r"^\d{4}-\d{2}_", "", text)
+    text = re.sub(r"^[A-Z]{2,4}\d{3,4}_", "", text)
+    return text.strip() or (name or "").strip()
+
+
 def course_code(name):
     """从 CN 的课程名里取出课程代码，例如 2026-09_ABC123_Introduction -> ABC123。"""
     match = re.search(r"[A-Z]{2,4}\s?\d{3,4}", name or "")
@@ -2969,7 +3038,9 @@ class Handler(BaseHTTPRequestHandler):
                     "capabilities": {
                         "imageOcr": os.path.exists(OCR_BIN),
                         "pdfOcr": os.path.exists(PDF_OCR_BIN),
-                        "llm": os.path.isdir(LLM_DIR) or _http_llm_ready(),
+                        # Windows 上 7B 只能走 Ollama：LLM_DIR 存在不代表能用，
+                        # 之前这里会误报可用，面板点亮按钮后才吃 400
+                        "llm": _http_llm_ready() if PLATFORM != "macos" else os.path.isdir(LLM_DIR),
                         "mtThreads": mt_threads(),
                     # 面板据此决定能不能用快速翻译，而不是点了才吃 400
                     "fastTranslate": ctranslate2 is not None and spm is not None,
@@ -3119,7 +3190,7 @@ class Handler(BaseHTTPRequestHandler):
                  "/timetable/add", "/timetable/save", "/timetable/import",
                  "/hidden/toggle",
                  "/aidetect", "/digest/refresh", "/release", "/plan/toggle",
-                 "/plan/refresh")
+                 "/plan/refresh", "/plan/add", "/plan/remove")
         if route not in known:
             self._json({"error": "unknown endpoint: %s" % route}, 404)
             return
@@ -3245,10 +3316,24 @@ class Handler(BaseHTTPRequestHandler):
                         manual.append(item)
                 fresh = []
                 failures = []
+                # 先把要翻的英文攒起来，一次批量翻完，别一个字一个请求
+                to_translate = []
+                for row in rows:
+                    if row.get("error"):
+                        continue
+                    to_translate.append(course_title(row.get("name")))
+                    for item in row.get("items") or []:
+                        to_translate.append((item.get("title") or "").strip())
+                translated = translate_short_batch(to_translate)
+                cursor = 0
                 for row in rows:
                     if row.get("error"):
                         failures.append("%s: %s" % (row.get("name") or row.get("number"), row["error"]))
+                        continue
                     code = course_code(row.get("name")) or (row.get("number") or "")
+                    title_en = course_title(row.get("name"))
+                    course_zh = translated[cursor] if cursor < len(translated) else ""
+                    cursor += 1
                     for item in row.get("items") or []:
                         title = (item.get("title") or "").strip()
                         if not title:
@@ -3263,16 +3348,23 @@ class Handler(BaseHTTPRequestHandler):
                         prev = previous.get(item_id) or {}
                         kind = item.get("type") or ""
                         note = ("截止 " + due) if due else kind
+                        title_zh = translated[cursor] if cursor < len(translated) else ""
+                        cursor += 1
                         fresh.append(
                             {
                                 "id": item_id,
                                 "kind": "assignment",
                                 "course": code,
+                                "courseName": title_en,
+                                "courseZh": course_zh,
                                 "title": title,
+                                "titleZh": title_zh,
                                 "note": note,
                                 "due": due,
                                 "type": kind,
                                 "points": item.get("points"),
+                                "desc": (item.get("description") or "")[:600],
+                                "url": "https://www.thecn.com/course/%s" % (row.get("number") or ""),
                                 "done": bool(prev.get("done")),
                             }
                         )
@@ -3303,6 +3395,75 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(err)}, 400)
             except Exception as err:
                 self._json({"error": "抓取作业失败：%s" % err}, 500)
+            return
+
+        if route_path.endswith("/plan/add"):
+            try:
+                payload_in = json.loads(raw.decode("utf-8") or "{}")
+                title = (payload_in.get("title") or "").strip()
+                if not title:
+                    raise BadRequest("待办标题不能为空")
+                course = (payload_in.get("course") or "").strip()[:40]
+                due = (payload_in.get("due") or "").strip()
+                if due and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due):
+                    raise BadRequest("截止日期用 YYYY-MM-DD")
+                plan = read_plan_file()
+                items = [item for item in (plan.get("items") or []) if isinstance(item, dict)]
+                # 英文待办自动配中文，跟 CN 拉下来的一样
+                title_zh = translate_short_batch([title])[0] if re.search(r"[A-Za-z]{3}", title) else ""
+                course_zh = translate_short_batch([course])[0] if re.search(r"[A-Za-z]{3}", course) else ""
+                items.append(
+                    {
+                        "id": "me:%d:%s" % (int(time.time() * 1000), os.urandom(2).hex()),
+                        "kind": "custom",
+                        "course": course,
+                        "courseZh": course_zh,
+                        "title": title[:200],
+                        "titleZh": title_zh,
+                        "note": (payload_in.get("note") or "").strip()[:200],
+                        "due": due,
+                        "done": False,
+                    }
+                )
+                plan["items"] = items
+                plan.setdefault("state", {})
+                plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
+                save_plan(plan)
+                self._json({"ok": True, "items": load_plan()["items"]})
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": str(err)}, 500)
+            return
+
+        if route_path.endswith("/plan/remove"):
+            try:
+                payload_in = json.loads(raw.decode("utf-8") or "{}")
+                item_id = payload_in.get("id")
+                if not item_id:
+                    raise BadRequest("缺少 id")
+                plan = read_plan_file()
+                items = [item for item in (plan.get("items") or []) if isinstance(item, dict)]
+                kept = [item for item in items if item.get("id") != item_id]
+                if len(kept) == len(items):
+                    state = plan.get("state") or {}
+                    if item_id in state:
+                        state.pop(item_id, None)
+                        plan["state"] = state
+                        plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
+                        save_plan(plan)
+                        self._json({"ok": True, "items": load_plan()["items"]})
+                        return
+                    raise BadRequest("没有这条待办: %s" % item_id)
+                plan["items"] = kept
+                plan.setdefault("state", {})
+                plan["updatedAt"] = datetime.datetime.now().isoformat(timespec="seconds")
+                save_plan(plan)
+                self._json({"ok": True, "items": load_plan()["items"]})
+            except BadRequest as err:
+                self._json({"error": str(err)}, 400)
+            except Exception as err:
+                self._json({"error": str(err)}, 500)
             return
 
         if route_path.endswith("/plan/toggle"):

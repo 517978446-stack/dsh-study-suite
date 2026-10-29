@@ -761,6 +761,8 @@ window.__ModuleLoader__.load({
       });
       const [updatedAt, setUpdatedAt] = React.useState('');
       const [planNotice, setPlanNotice] = React.useState('');
+      const [openDesc, setOpenDesc] = React.useState({});
+      const [newItem, setNewItem] = React.useState({ course: '', title: '', due: '' });
       const [taskDraft, setTaskDraft] = React.useState('');
       const [newCourse, setNewCourse] = React.useState('');
       const [frontDraft, setFrontDraft] = React.useState('');
@@ -869,6 +871,61 @@ window.__ModuleLoader__.load({
           setPlan({ items: [], loading: false, error: '读不到课程待办' });
         } finally {
           if (manual) setTimeout(function () { setRefreshing(false); }, 600);
+        }
+      }
+
+      const chipStyle = {
+        height: 22,
+        padding: '0 8px',
+        borderRadius: 6,
+        border: '1px solid ' + C.border,
+        background: 'transparent',
+        color: C.muted,
+        fontSize: 11,
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+      };
+
+      async function addPlanItem() {
+        const title = (newItem.title || '').trim();
+        if (!title) {
+          setPlanNotice('先写待办内容');
+          return;
+        }
+        try {
+          const response = await fetch(ENGINE + '/plan/add', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              course: (newItem.course || '').trim(),
+              title: title,
+              due: (newItem.due || '').trim(),
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok || data.error) throw new Error(data.error || '添加失败');
+          setPlan({ items: data.items || [], loading: false, error: '' });
+          setNewItem({ course: '', title: '', due: '' });
+          setPlanNotice('已添加：' + title);
+        } catch (err) {
+          setPlanNotice(String((err && err.message) || err));
+        }
+      }
+
+      async function removePlanItem(id) {
+        try {
+          const response = await fetch(ENGINE + '/plan/remove', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: id }),
+          });
+          const data = await response.json();
+          if (!response.ok || data.error) throw new Error(data.error || '删除失败');
+          setPlan({ items: data.items || [], loading: false, error: '' });
+          setPlanNotice('已删除');
+        } catch (err) {
+          setPlanNotice(String((err && err.message) || err));
         }
       }
 
@@ -1829,6 +1886,38 @@ window.__ModuleLoader__.load({
             planNotice
               ? h('p', { style: { margin: 0, fontSize: 12, color: C.muted } }, planNotice)
               : null,
+            h(
+              'div',
+              { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
+              h(Field, {
+                value: newItem.course,
+                placeholder: '课程（可留空）',
+                style: { flex: '0 1 150px' },
+                onChange: function (value) {
+                  setNewItem(function (prev) { return Object.assign({}, prev, { course: value }); });
+                },
+              }),
+              h(Field, {
+                value: newItem.title,
+                placeholder: '自己的待办，写一句英文会自动配中文',
+                style: { flex: '3 1 240px' },
+                onChange: function (value) {
+                  setNewItem(function (prev) { return Object.assign({}, prev, { title: value }); });
+                },
+                onKeyDown: function (event) {
+                  if (event.key === 'Enter') addPlanItem();
+                },
+              }),
+              h(Field, {
+                value: newItem.due,
+                placeholder: '截止 2026-11-02',
+                style: { flex: '0 0 130px' },
+                onChange: function (value) {
+                  setNewItem(function (prev) { return Object.assign({}, prev, { due: value }); });
+                },
+              }),
+              h(Button, { onClick: addPlanItem }, '添加待办'),
+            ),
             plan.items.length === 0 && !plan.loading && !plan.error
               ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
                   h('p', { style: { margin: 0 } }, '还没有待办。'),
@@ -1885,7 +1974,10 @@ window.__ModuleLoader__.load({
                         h(
                           'div',
                           { style: { display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' } },
-                          h('span', { style: { fontSize: 11, color: C.muted } }, item.course),
+                          h('span', { style: { fontSize: 11, color: C.muted } },
+                            (item.course || '') +
+                            (item.courseName ? ' ' + item.courseName : '') +
+                            (item.courseZh ? '（' + item.courseZh + '）' : '')),
                           h(
                             'span',
                             {
@@ -1897,10 +1989,70 @@ window.__ModuleLoader__.load({
                               },
                             },
                             item.title,
+                            item.titleZh
+                              ? h('span', { style: { color: C.muted, fontWeight: 400 } }, '（' + item.titleZh + '）')
+                              : null,
                           ),
                         ),
                         item.note
                           ? h('span', { style: { fontSize: 11, color: C.muted } }, item.note)
+                          : null,
+                        h(
+                          'div',
+                          { style: { display: 'flex', gap: 6, paddingTop: 2, flexWrap: 'wrap' } },
+                          item.desc
+                            ? h('button', {
+                                type: 'button',
+                                onClick: function (event) {
+                                  event.stopPropagation();
+                                  setOpenDesc(function (prev) {
+                                    const next = Object.assign({}, prev);
+                                    next[item.id] = !next[item.id];
+                                    return next;
+                                  });
+                                },
+                                style: chipStyle,
+                              }, openDesc[item.id] ? '收起要点' : '要点')
+                            : null,
+                          h('button', {
+                            type: 'button',
+                            onClick: function (event) {
+                              event.stopPropagation();
+                              openCheck(item, item.doc || (item.docs && item.docs[0] && item.docs[0].path) || '', checkTarget);
+                            },
+                            style: chipStyle,
+                          }, '检查'),
+                          item.url
+                            ? h('a', {
+                                href: item.url,
+                                target: '_blank',
+                                rel: 'noreferrer',
+                                onClick: function (event) { event.stopPropagation(); },
+                                style: Object.assign({ textDecoration: 'none' }, chipStyle),
+                              }, '打开课程')
+                            : null,
+                          item.kind === 'custom'
+                            ? h('button', {
+                                type: 'button',
+                                onClick: function (event) {
+                                  event.stopPropagation();
+                                  removePlanItem(item.id);
+                                },
+                                style: chipStyle,
+                              }, '删除')
+                            : null,
+                        ),
+                        openDesc[item.id] && item.desc
+                          ? h('div', {
+                              style: {
+                                fontSize: 12,
+                                color: C.muted,
+                                lineHeight: 1.6,
+                                paddingTop: 2,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              },
+                            }, item.desc)
                           : null,
                         (item.doc || item.url)
                           ? h(
