@@ -33,6 +33,7 @@ import io
 import json
 import math
 import statistics
+import subprocess
 import os
 import re
 import sys
@@ -153,7 +154,32 @@ def ocr_image(path):
 
 
 def ocr_result(path):
-    """原始识别结果：[[box, text, score], ...]，留着坐标后面拼表格用。"""
+    """原始识别结果：[[box, text, score], ...]，留着坐标后面拼表格用。
+
+    Windows 用进程内的 RapidOCR（带坐标）；macOS 用编译好的 Vision 工具，
+    带 --json 时也有坐标。老版本 OCR 工具不支持 --json 时退回纯文字。
+    """
+    if os.name != "nt" and os.path.exists(OCR_BIN):
+        out = subprocess.run(_ocr_argv(OCR_BIN, "--json", path), capture_output=True, text=True, timeout=120)
+        try:
+            rows = json.loads((out.stdout or "").strip())
+        except Exception:
+            rows = []
+        if rows:
+            result = []
+            for row in rows:
+                text = str(row.get("text") or "").strip()
+                if not text:
+                    continue
+                x, y = float(row.get("x") or 0), float(row.get("y") or 0)
+                w, h = float(row.get("w") or 0), float(row.get("h") or 0)
+                result.append([[[x, y], [x + w, y], [x + w, y + h], [x, y + h]], text, 1.0])
+            return result
+        out = subprocess.run(_ocr_argv(OCR_BIN, path), capture_output=True, text=True, timeout=120)
+        text = (out.stdout or "").strip()
+        if not text:
+            raise RuntimeError((out.stderr or "系统 OCR 没有识别出文字").strip()[:200])
+        return [[None, line, None] for line in text.splitlines() if line.strip()]
     result, _elapse = _ocr_engine()(path)
     return result or []
 
@@ -1018,12 +1044,23 @@ def normalize_class(item):
     if hour > 23 or minute > 59:
         raise BadRequest("start 必须是 00:00-23:59 之间的时间")
     start = "%02d:%02d" % (hour, minute)
-    return {
+    entry = {
         "day": day,
         "start": start,
         "course": course[:80],
         "room": str(item.get("room") or "").strip()[:40],
     }
+    # 旧数据里的附加字段（手动录入或上一版识别结果），整表保存时不能顺手丢掉
+    end = str(item.get("end") or "").strip()
+    if re.fullmatch(r"\d{1,2}:\d{2}", end):
+        end_hour, end_minute = (int(part) for part in end.split(":"))
+        if end_hour <= 23 and end_minute <= 59:
+            entry["end"] = "%02d:%02d" % (end_hour, end_minute)
+    for key, limit in (("title", 80), ("kind", 40), ("teacher", 40)):
+        value = str(item.get(key) or "").strip()
+        if value:
+            entry[key] = value[:limit]
+    return entry
 
 
 TIMETABLE_PROMPT = """你是一个课表解析器。用户给你一段从课表截图 OCR 出来的文字，
@@ -1210,9 +1247,21 @@ def parse_timetable(text, blocks=None):
             "没从这张图里认出课表结构。换一张带「周一到周日」表头、能看清时间的截图；"
             "装了 Ollama 的话还能让本地大模型兜底识别"
         )
-    if engine_state.get("mode") != "http":
-        raise BadRequest("课表识别需要本地 HTTP 推理服务（Ollama）")
-    raw = _http_chat(TIMETABLE_PROMPT, text, 1200)
+    if engine_state.get("mode") == "http":
+        raw = _http_chat(TIMETABLE_PROMPT, text, 1200)
+    else:
+        # macOS 走 MLX，不依赖 Ollama
+        from mlx_lm import generate
+
+        messages = [
+            {"role": "system", "content": TIMETABLE_PROMPT},
+            {"role": "user", "content": text[:6000]},
+        ]
+        prompt = engine_state["tokenizer"].apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        raw = generate(engine_state["model"], engine_state["tokenizer"], prompt=prompt,
+                       max_tokens=1200, verbose=False)
     match = re.search(r"\[[\s\S]*\]", raw or "")
     if not match:
         raise BadRequest("模型没有返回 JSON，原文：%s" % (raw or "")[:120])
@@ -3411,7 +3460,9 @@ class Handler(BaseHTTPRequestHandler):
                     blocks = blocks_from_result(result)
                 except ImportError as err:
                     sys.stderr.write("[timetable] ocr deps missing: %s\n" % err)
-                    raise BadRequest("这台机器没装图片识别依赖，重装时加 -Full：install.ps1 -Full")
+                    hint = ("powershell -ExecutionPolicy Bypass -File .\\install.ps1 -Full"
+                            if os.name == "nt" else "./install.sh --full")
+                    raise BadRequest("这台机器没装图片识别依赖，重装时加全量参数：%s" % hint)
                 except Exception as err:
                     # 用户传错文件（PDF/Word/文本）时 OCR 会抛解析错误，
                     # 原始消息里带本机绝对路径，不能直接回给面板
