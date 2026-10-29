@@ -9,6 +9,17 @@
 - `release.yml` 支持 `macos-v*` 标签；版本号以 VERSION 文件为准，标签只负责触发
 - 标签约定：macOS `macos-v7.14.0`、Windows `win-v7.13.3`（后者由维护者自己打）
 
+## 7.13.7 — 2026-10-29（Windows）
+
+**少一个库不再拖垮整个服务**
+
+- `ctranslate2` / `numpy` / `sentencepiece` 改成可选导入：任何一项缺失，服务照常启动，
+  只有翻译本身不可用 —— 课表、待办、图片识别、检测全都正常
+- 之前这三个是顶层裸 `import`，装到一半失败就等于整个面板失效（所有数据都从本地服务取）
+- `/health` 新增 `fastTranslate` 与 `mtError`：面板据此把「快速」按钮置灰并写明缺什么，
+  而不是点下去才吃 400
+- 音频解码用到 numpy，缺了会给一句人话，不是 `AttributeError`
+
 ## 7.13.6 — 2026-10-29（Windows）
 
 **找了一圈 bug，修了 8 个**

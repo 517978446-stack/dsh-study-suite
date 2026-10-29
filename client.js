@@ -3430,9 +3430,15 @@ window.__ModuleLoader__.load({
           'button',
           {
             type: 'button',
-            onClick: () => setEngine('fast'),
-            title: 'opus-mt，80–150ms，术语靠词表保证',
-            style: pillStyle(engine === 'fast' || !caps.llm),
+            onClick: () => { if (caps.fastTranslate !== false) setEngine('fast'); },
+            disabled: caps.fastTranslate === false,
+            title: caps.fastTranslate === false
+              ? '这台机器没装快速翻译引擎（缺 ctranslate2 / sentencepiece），重装时加 -Full'
+              : 'opus-mt，80–150ms，术语靠词表保证',
+            style: Object.assign(pillStyle(engine === 'fast' || !caps.llm), {
+              opacity: caps.fastTranslate === false ? 0.45 : 1,
+              cursor: caps.fastTranslate === false ? 'not-allowed' : 'pointer',
+            }),
           },
           '快速',
         ),
@@ -4575,7 +4581,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.4'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.6'),
         ),
         h(
           'div',

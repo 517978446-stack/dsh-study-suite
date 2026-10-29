@@ -42,9 +42,19 @@ import urllib.parse
 import urllib.request
 import wave
 
-import ctranslate2
-import numpy as np
-import sentencepiece as spm
+# 快速翻译引擎是可选的：最小安装、或者装到一半失败时缺了它，
+# 整个服务不该跟着起不来（课表、待办、识别都还要能用）
+try:
+    import ctranslate2
+    import numpy as np
+    import sentencepiece as spm
+
+    MT_DEPS_ERROR = ""
+except Exception as _mt_err:  # ModuleNotFoundError / DLL 加载失败
+    ctranslate2 = None
+    np = None
+    spm = None
+    MT_DEPS_ERROR = str(_mt_err)
 
 # 语音识别依赖是可选的：最小安装只有翻译/检测，缺了不能拖垮整个服务
 try:
@@ -1805,6 +1815,8 @@ def asr_model(name=None):
 
 def read_wav_bytes(body):
     """Decode 16-bit mono WAV bytes into float32 mono audio."""
+    if np is None:
+        raise BadRequest("这台机器没装 numpy，语音相关的功能不可用")
     with wave.open(io.BytesIO(body), "rb") as handle:
         if handle.getsampwidth() != 2:
             raise ValueError("只支持 16-bit PCM WAV")
@@ -1962,6 +1974,11 @@ def engine(direction):
 
     锁只覆盖加载：解码本身是线程安全的，长文档不该挡住另一条短句。
     """
+    if ctranslate2 is None or spm is None:
+        raise BadRequest(
+            "这台机器没装快速翻译引擎（缺 ctranslate2 / sentencepiece）。"
+            "重装时加 -Full 就会带上；课表、待办、图片识别不受影响。"
+        )
     cached = _ENGINES.get(direction)
     if cached is not None:
         _LAST_USED["mt"] = time.time()
@@ -2954,6 +2971,9 @@ class Handler(BaseHTTPRequestHandler):
                         "pdfOcr": os.path.exists(PDF_OCR_BIN),
                         "llm": os.path.isdir(LLM_DIR) or _http_llm_ready(),
                         "mtThreads": mt_threads(),
+                    # 面板据此决定能不能用快速翻译，而不是点了才吃 400
+                    "fastTranslate": ctranslate2 is not None and spm is not None,
+                    "mtError": MT_DEPS_ERROR,
                         # 能不能用只看依赖装没装；模型目录是首次调用时才创建的，
                         # 拿它判断能力会让“刚装完 -Full 还没说过话”的用户永久锁死
                         "asr": WhisperModel is not None,
