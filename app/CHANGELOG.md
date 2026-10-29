@@ -9,6 +9,20 @@
 - `release.yml` 支持 `macos-v*` 标签；版本号以 VERSION 文件为准，标签只负责触发
 - 标签约定：macOS `macos-v7.14.0`、Windows `win-v7.13.3`（后者由维护者自己打）
 
+## 7.13.8 — 2026-10-29（Windows）
+
+**装少了什么，面板直接告诉你怎么补**
+
+- 打开面板时按 `/health` 的 `capabilities` 算一份「缺什么」清单
+  （快速翻译 / 图片识别 / 扫描件 OCR / 语音转写），缺了就顶部显示一条提示
+- 提示里直接给可复制的安装命令：
+  - Windows `powershell -ExecutionPolicy Bypass -File .\install.ps1 -Full`
+  - macOS `./install.sh --full`
+  按 `platform` 自动选，点「复制命令」就能粘到终端
+- 说清三件事：缺的只是对应功能、其它照常能用；已装好的不会重复下载；
+  装完服务会自动重启，刷新面板即可
+- 全装齐的机器上不显示这条提示，不打扰
+
 ## 7.13.7 — 2026-10-29（Windows）
 
 **少一个库不再拖垮整个服务**

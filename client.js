@@ -26,6 +26,9 @@ window.__ModuleLoader__.load({
           imageOcr: c.imageOcr !== false,
           // pdfOcr 只影响扫描件；文字版 PDF 靠 pypdf 就能读，所以别把它理解成“PDF 不可用”
           pdfOcr: c.pdfOcr !== false,
+          // fastTranslate 缺省视为可用（老版本服务没有这个字段）
+          fastTranslate: c.fastTranslate !== false,
+          mtError: c.mtError || '',
           known: true,
         };
       }
@@ -708,6 +711,31 @@ window.__ModuleLoader__.load({
       const lastCheckFileRef = React.useRef(null);
       const [cnTokenInput, setCnTokenInput] = React.useState('');
       const [cnBusy, setCnBusy] = React.useState(false);
+      const [installCopied, setInstallCopied] = React.useState(false);
+
+      // 装少了什么：直接在面板上说清楚，别让人去翻文档
+      const missing = (function () {
+        if (!caps.known) return [];
+        const list = [];
+        if (caps.fastTranslate === false) list.push('快速翻译');
+        if (caps.imageOcr === false) list.push('图片识别');
+        if (caps.pdfOcr === false) list.push('扫描件 OCR');
+        if (caps.asr === false) list.push('语音转写');
+        return list;
+      })();
+      const installCommand = caps.platform === 'macos'
+        ? './install.sh --full'
+        : 'powershell -ExecutionPolicy Bypass -File .\\install.ps1 -Full';
+
+      function copyInstallCommand() {
+        try {
+          navigator.clipboard.writeText(installCommand);
+          setInstallCopied(true);
+          setTimeout(function () { setInstallCopied(false); }, 1600);
+        } catch (err) {
+          setInstallCopied(false);
+        }
+      }
       const modalTokenRef = React.useRef(0);
 
       function closeModal() {
@@ -1686,6 +1714,46 @@ window.__ModuleLoader__.load({
               '打开课程列表',
             ),
           ),
+          missing.length
+            ? h(
+                'div',
+                {
+                  style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    border: '1px solid ' + C.border,
+                    background: C.base,
+                  },
+                },
+                h('div', { style: { fontSize: 13, fontWeight: 600 } },
+                  '这台机器少装了几样：' + missing.join('、')),
+                h('div', { style: { fontSize: 12, color: C.muted, lineHeight: 1.7 } },
+                  '缺的只是对应那几项功能，其它照常能用。重跑一次安装脚本、加上全量参数就会补上（已经装好的不会重复下载）：'),
+                h(
+                  'div',
+                  { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+                  h('code', {
+                    style: {
+                      flex: '1 1 auto',
+                      minWidth: 0,
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      background: 'rgba(127,127,127,0.12)',
+                      fontSize: 12,
+                      userSelect: 'all',
+                      wordBreak: 'break-all',
+                    },
+                  }, installCommand),
+                  h(Button, { onClick: copyInstallCommand }, installCopied ? '已复制' : '复制命令'),
+                ),
+                h('div', { style: { fontSize: 12, color: C.muted } },
+                  '装完服务会自动重启，刷新面板就行。' +
+                  (caps.mtError ? '（' + String(caps.mtError).slice(0, 80) + '）' : '')),
+              )
+            : null,
           h(
             Card,
             {
@@ -4581,7 +4649,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.6'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.13.7'),
         ),
         h(
           'div',
