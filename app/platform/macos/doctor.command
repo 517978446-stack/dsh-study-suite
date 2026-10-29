@@ -175,6 +175,26 @@ else
 fi
 
 echo
+echo "[12] 提醒与守护"
+REMIND_LABEL="com.local.cn-interpreter.remind"
+if launchctl print "gui/$(id -u)/$REMIND_LABEL" >/dev/null 2>&1; then
+  ok "提醒任务已注册（$REMIND_LABEL，每 5 分钟）"
+else
+  PREF="$BASE/remind.json"
+  if [ -f "$PREF" ] && grep -q '"enabled"[[:space:]]*:[[:space:]]*false' "$PREF"; then
+    note "提醒已被你关闭（$PREF 记着这个选择），重装不会自动开；恢复：./install.sh --remind"
+  else
+    warn "没有注册提醒任务；需要截止/上课推送就跑 ./install.sh（或 --remind）"
+  fi
+fi
+if launchctl print "gui/$(id -u)/com.local.cn-interpreter" 2>/dev/null | grep -q "state = running"; then
+  ok "服务守护生效（launchd KeepAlive，退出后自动拉起）"
+else
+  warn "服务当前没在运行；launchd 会在下次登录/加载时拉起"
+fi
+[ -f "$BASE/remind.log" ] && tail -3 "$BASE/remind.log" | sed 's/^/  · /'
+
+echo
 echo "=============================================="
 if [ "$FAIL" -eq 0 ]; then
   echo " 结论：全部通过（$WARN 项可选功能缺失）"

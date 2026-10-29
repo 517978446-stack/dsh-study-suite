@@ -1979,7 +1979,7 @@ window.__ModuleLoader__.load({
               ? h('div', { style: { margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.7 } },
                   h('p', { style: { margin: 0 } }, '还没有待办。'),
                   h('p', { style: { margin: '4px 0 0' } },
-                    '点上面的「同步作业」从 CN 拉作业；课表里排了今天/明天的课也会出现在这里。'))
+                    '点右上角「导入文档」把作业说明导进来，或在下面手动加一条；课表里排了今天/明天的课也会出现在这里。'))
               : h(
                   'div',
                   { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
@@ -4868,7 +4868,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : null,
-          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.15.0'),
+          h('span', { style: { fontSize: 11, color: SHELL_C.muted } }, 'v7.15.1'),
         ),
         h(
           'div',
