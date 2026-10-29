@@ -151,42 +151,143 @@ def _course_bundle(entry):
     }
 
 
-def assignments():
-    """每门课的成绩册条目（作业 / 测验 / 附件），带截止时间。
+def strip_html(text):
+    """CN 的 description 是整段 HTML，抽成纯文本给"要点"用。"""
+    text = re.sub(r"<(script|style)[^>]*>[\s\S]*?</\1>", " ", text or "", flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
+    )
+    return re.sub(r"\s+", " ", text).strip()
 
-    gradebook_item 里有 end_time / final_end_time（Unix 秒），这就是作业的
-    截止时间。提交状态需要额外接口，这里只负责「有哪些作业、什么时候交」，
-    「交没交」由用户在面板里勾。
+
+# 课程章节里这几种页面才是「要交的东西」：
+# assignment_submission 交文件，create_post 交帖子，view_quiz 做测验
+ASSIGNMENT_ASSETS = ("assignment_submission", "create_post", "view_quiz")
+
+_WEEKDAY_RE = re.compile(r"\b(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\b", re.I)
+_CLOCK_RE = re.compile(r"\b\d{1,2}\s*(?:am|pm)\b", re.I)
+
+
+def assignment_key(title):
+    """同一份作业常被拆成十几个按小组/时间段分开的提交入口，归并成一个。
+
+    「A1 - Monday: Group A (3 pm - 5 pm)」和「A1 - Tuesday: Group B (10 am - 12 pm)」
+    是同一个 A1，只是入口不同；不去重的话一门课能刷出几十条重复。
+    """
+    text = (title or "").lower()
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = _WEEKDAY_RE.sub(" ", text)
+    text = _CLOCK_RE.sub(" ", text)
+    text = re.sub(r"\bgroup\s*[a-z]\b", " ", text)
+    text = re.sub(r"\blecture\s*\d+\b", " ", text)
+    # 时间范围 3-5pm / 2 pm - 4 pm
+    text = re.sub(r"\b\d{1,2}\s*[-\u2013]\s*\d{1,2}\s*(?:am|pm)\b", " ", text)
+    # ass / assign / assignment / assessment 归一：老师的写法五花八门
+    text = re.sub(r"\b(ass|asg|assign|assignment|assessment)\b", "assessment", text)
+    text = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", text)
+    return " ".join(text.split())[:40]
+
+
+def assignments():
+    """每门课要交的作业。
+
+    以前只读 /api/course_gradebook_item/，那其实是成绩册条目 —— 大部分学校的
+    真正的作业在课程章节的 assignment_submission 页面里，成绩册反而只有测验。
+    现在以章节页面为主、成绩册条目补充，截止时间从 gradebook_item_id 关联取，
+    是否已交看 dropbox 提交记录。
     """
     from concurrent.futures import ThreadPoolExecutor
 
     def one(entry):
-        try:
-            data = call("/api/course_gradebook_item/", {"course_id": entry["internal_id"]})
-        except Exception as err:
-            return {
-                "number": entry["number"],
-                "name": entry["name"],
-                "error": str(err)[:120],
-                "items": [],
-            }
+        internal = entry["internal_id"]
+        result = {"number": entry["number"], "name": entry["name"], "error": "", "items": []}
+        # 三个请求互不依赖，并发发出去：串行会让同步慢一倍
+        fetch = {
+            "pages": lambda: call("/api/course_path_page/", {"course_id": internal}).get("data") or [],
+            "grade": lambda: call("/api/course_gradebook_item/", {"course_id": internal}).get("data") or [],
+            "dropbox": lambda: call("/api/course_dropbox_item/", {"course_id": internal}).get("data") or [],
+        }
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {key: pool.submit(fn) for key, fn in fetch.items()}
+            try:
+                pages = futures["pages"].result()
+                grade = futures["grade"].result()
+                dropbox = futures["dropbox"].result()
+            except Exception as err:
+                result["error"] = str(err)[:120]
+                return result
+
+        by_id = {}
+        by_name = {}
+        for item in grade:
+            by_id[item.get("id")] = item
+            name = (item.get("name") or "").strip().lower()
+            if name:
+                by_name[name] = item
+
+        submitted = set()
+        for sub in dropbox:
+            linked = (sub.get("gradebook_item") or {}).get("id")
+            if linked:
+                submitted.add(linked)
+
         items = []
-        for item in data.get("data") or []:
-            if not item.get("is_displayable", True) or item.get("mute"):
+        seen = set()
+        for page in pages:
+            asset = page.get("asset") or {}
+            kind = asset.get("type") or ""
+            if kind not in ASSIGNMENT_ASSETS:
                 continue
-            due = item.get("final_end_time") or item.get("end_time") or None
+            title = (page.get("title") or "").strip()
+            if not title:
+                continue
+            key = assignment_key(title) or title.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+
+            linked_item = by_id.get(page.get("gradebook_item_id") or "") or by_name.get(key) or {}
+            due = linked_item.get("final_end_time") or linked_item.get("end_time") or None
+            linked_id = linked_item.get("id") or ""
+            items.append(
+                {
+                    "id": page.get("id"),
+                    "title": title,
+                    "type": kind,
+                    "due": due,
+                    "description": strip_html(page.get("description") or "")[:400],
+                    "submitted": bool(linked_id) and linked_id in submitted,
+                }
+            )
+
+        # 成绩册里有、章节页面里没有的条目（有些课直接拿测验当作业）
+        for item in grade:
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            key = assignment_key(name) or name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
             items.append(
                 {
                     "id": item.get("id"),
-                    "title": (item.get("name") or "").strip(),
+                    "title": name,
                     "type": item.get("content_type") or "",
-                    "calc": item.get("type") or "",
-                    "points": item.get("grade"),
-                    "due": due,
-                    "description": (item.get("description") or "")[:200],
+                    "due": item.get("final_end_time") or item.get("end_time") or None,
+                    "description": (item.get("description") or "")[:400],
+                    "submitted": item.get("id") in submitted,
                 }
             )
-        return {"number": entry["number"], "name": entry["name"], "error": "", "items": items}
+
+        result["items"] = items
+        return result
 
     entries = courses()
     with ThreadPoolExecutor(max_workers=6) as pool:

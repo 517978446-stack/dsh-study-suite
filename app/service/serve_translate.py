@@ -1507,6 +1507,16 @@ def course_title(name):
     return text.strip() or (name or "").strip()
 
 
+KIND_LABELS = {
+    "assignment_submission": "交作业",
+    "create_post": "发帖",
+    "view_quiz": "测验",
+    "quiz": "测验",
+    "attachment": "附件",
+    "point": "计分项",
+}
+
+
 def course_code(name):
     """从 CN 的课程名里取出课程代码，例如 2026-09_ABC123_Introduction -> ABC123。"""
     match = re.search(r"[A-Z]{2,4}\s?\d{3,4}", name or "")
@@ -3555,7 +3565,7 @@ class Handler(BaseHTTPRequestHandler):
                         prev = previous.get(item_id) or {}
                         kind = item.get("type") or ""
                         # 日期单独由 due 显示，note 只放类型，否则面板上会看到两个「截止 12-31」
-                        note = kind
+                        note = KIND_LABELS.get(kind, kind)
                         title_zh = translated[cursor] if cursor < len(translated) else ""
                         cursor += 1
                         if not title_zh:
@@ -3576,8 +3586,10 @@ class Handler(BaseHTTPRequestHandler):
                                 "type": kind,
                                 "points": item.get("points"),
                                 "desc": (item.get("description") or "")[:600],
+                                "submitted": bool(item.get("submitted")),
                                 "url": "https://www.thecn.com/course/%s" % (row.get("number") or ""),
-                                "done": bool(prev.get("done")),
+                                # 第一次同步时按 CN 的提交记录勾上；之后以用户自己的勾选为准
+                                "done": bool(prev.get("done")) if prev else bool(item.get("submitted")),
                             }
                         )
                 fresh.sort(key=lambda entry: (entry.get("due") or "9999-99-99", entry.get("course") or "", entry.get("title") or ""))
